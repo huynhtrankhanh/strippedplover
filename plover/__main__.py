@@ -1,4 +1,4 @@
-from plover.scripts.main import main
+from plover.stripped_plover import main
 
 
 if __name__ == "__main__":

@@ -1,6 +1,0 @@
-build
-check-manifest
-readme-renderer[md]
-twine
-
-# vim: ft=cfg commentstring=#\ %s list

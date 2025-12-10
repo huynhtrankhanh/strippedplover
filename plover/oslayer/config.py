@@ -1,12 +1,10 @@
 # Copyright (c) 2012 Hesky Fisher
 # See LICENSE.txt for details.
 
-"""Platform dependent configuration."""
+"""Platform dependent configuration for Stripped Plover."""
 
 import os
 import sys
-
-import appdirs
 
 
 if sys.platform.startswith("darwin"):
@@ -20,32 +18,18 @@ elif sys.platform.startswith(("freebsd", "openbsd")):
 else:
     PLATFORM = None
 
-# If the program's working directory has a plover.cfg file then run in
-# "portable mode", i.e. store all data in the same directory. This allows
-# keeping all Plover files in a portable drive.
-#
-# Note: the special case when run from an app bundle on macOS.
-if PLATFORM == "mac" and ".app/" in os.path.realpath(__file__):
-    PROGRAM_DIR = os.path.abspath(
-        os.path.join(os.path.dirname(sys.executable), *[os.path.pardir] * 3)
-    )
-else:
-    PROGRAM_DIR = os.getcwd()
+PROGRAM_DIR = os.getcwd()
 
-# Setup configuration directory.
+# Setup configuration directory - simplified for stripped plover
+# Uses current working directory or XDG_CONFIG_HOME/plover
 CONFIG_BASENAME = "plover.cfg"
 if os.path.isfile(os.path.join(PROGRAM_DIR, CONFIG_BASENAME)):
     CONFIG_DIR = PROGRAM_DIR
 else:
-    config_directories = [
-        getattr(appdirs, directory_type)("plover")
-        for directory_type in ("user_config_dir", "user_data_dir")
-    ]
-    for CONFIG_DIR in config_directories:
-        if os.path.isfile(os.path.join(CONFIG_DIR, CONFIG_BASENAME)):
-            break
-    else:
-        CONFIG_DIR = config_directories[0]
+    # Try XDG config directory on Linux/BSD, or fall back to home directory
+    xdg_config = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+    CONFIG_DIR = os.path.join(xdg_config, "plover")
+
 CONFIG_FILE = os.path.join(CONFIG_DIR, CONFIG_BASENAME)
 
 # Setup plugins directory.
