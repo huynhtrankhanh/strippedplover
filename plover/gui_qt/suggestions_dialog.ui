@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SuggestionsDialog</class>
+ <widget class="QDialog" name="SuggestionsDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>247</width>
+    <height>430</height>
+   </rect>
+  </property>
+  <property name="font">
+   <font>
+    <family>Monospace</family>
+   </font>
+  </property>
+  <property name="windowTitle">
+   <string notr="true"/>
+  </property>
+  <property name="sizeGripEnabled">
+   <bool>true</bool>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="SuggestionsWidget" name="suggestions" native="true">
+     <property name="accessibleName">
+      <string>Suggestions</string>
+     </property>
+    </widget>
+   </item>
+  </layout>
+  <action name="action_Clear">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/resources/trash.svg</normaloff>:/resources/trash.svg</iconset>
+   </property>
+   <property name="text">
+    <string>&amp;Clear</string>
+   </property>
+   <property name="toolTip">
+    <string>Clear the history.</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+L</string>
+   </property>
+  </action>
+  <action name="action_ToggleOnTop">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/resources/pin.svg</normaloff>:/resources/pin.svg</iconset>
+   </property>
+   <property name="text">
+    <string>&amp;Toggle &quot;always on top&quot;</string>
+   </property>
+   <property name="toolTip">
+    <string>Toggle &quot;always on top&quot;.</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+T</string>
+   </property>
+  </action>
+  <action name="action_SelectFont">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/resources/font_selector.svg</normaloff>:/resources/font_selector.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Select &amp;font</string>
+   </property>
+   <property name="toolTip">
+    <string>Open font selection dialog.</string>
+   </property>
+  </action>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>SuggestionsWidget</class>
+   <extends>QWidget</extends>
+   <header>plover.gui_qt.suggestions_widget</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
+ <resources>
+  <include location="resources.qrc"/>
+ </resources>
+ <connections>
+  <connection>
+   <sender>action_Clear</sender>
+   <signal>triggered()</signal>
+   <receiver>SuggestionsDialog</receiver>
+   <slot>clear()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>199</x>
+     <y>149</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>action_ToggleOnTop</sender>
+   <signal>triggered(bool)</signal>
+   <receiver>SuggestionsDialog</receiver>
+   <slot>toggle_ontop(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>123</x>
+     <y>214</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>action_SelectFont</sender>
+   <signal>triggered()</signal>
+   <receiver>SuggestionsDialog</receiver>
+   <slot>select_font()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>123</x>
+     <y>214</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
+ <slots>
+  <slot>save()</slot>
+  <slot>clear()</slot>
+  <slot>toggle_ontop(bool)</slot>
+  <slot>select_font()</slot>
+ </slots>
+</ui>

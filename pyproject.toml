@@ -1,0 +1,76 @@
+[build-system]
+requires = [
+	"Babel",
+	"PySide6-Essentials>=6.9.0",
+	"setuptools>=79.0.0",
+	"wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.towncrier]
+name = ""
+version = ""
+filename = "NEWS.md"
+directory = "news.d"
+template = "news.d/template.md"
+title_format = "# v{version} ({project_date})\n\n"
+underlines = ["", ""]
+
+[[tool.towncrier.section]]
+path = "feature"
+name = "Features"
+
+[[tool.towncrier.section]]
+path = "bugfix"
+name = "Bugfixes"
+
+[[tool.towncrier.type]]
+directory = "core"
+name = "Core"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "dict"
+name = "Dictionaries"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "ui"
+name = "User Interface"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "linux"
+name = "Linux"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "osx"
+name = "macOS"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "windows"
+name = "Windows"
+showcontent = true
+
+[[tool.towncrier.section]]
+path = "api"
+name = "API"
+
+[[tool.towncrier.type]]
+directory = "break"
+name = "Breaking Changes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "dnr"
+name = "Deprecations"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "new"
+name = "New"
+showcontent = true
+
+# vim: ft=cfg
