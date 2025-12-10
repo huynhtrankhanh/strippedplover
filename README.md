@@ -1,143 +1,79 @@
-<p align="center">
-    <img width="300" alt="Plover logo" src="https://raw.githubusercontent.com/openstenoproject/plover/main/doc/_static/dolores.svg" />
-</p>
+# Stripped Plover
 
-<h1 align="center">Plover</h1>
+**A minimal STDIO-based stenography translation engine for IME integration.**
 
-<p align="center"><i>Bringing stenography to everyone.</i></p>
+Stripped Plover is a streamlined version of [Plover](https://github.com/openstenoproject/plover) designed to run as a translation engine communicating via STDIO using a JSON line protocol. It is specifically designed for integration with Input Method Editors (IMEs).
 
-<p align="center">
-    <a href="https://github.com/openstenoproject/plover/releases">
-        <img alt="Latest release" src="https://img.shields.io/github/v/release/openstenoproject/plover?filter=v*" />
-    </a>
-    <img alt="License" src="https://img.shields.io/github/license/openstenoproject/plover" />
-    <a href="https://github.com/openstenoproject/plover/actions/workflows/ci.yml?query=branch%3Amain">
-        <img alt="CI status" src="https://github.com/openstenoproject/plover/actions/workflows/ci.yml/badge.svg?branch=main" />
-    </a>
-    <a href="https://plover.readthedocs.io/">
-        <img alt="ReadTheDocs" src="https://img.shields.io/readthedocs/plover?logo=readthedocs&logoColor=white" />
-    </a>
-    <a href="https://discord.gg/0lQde43a6dGmAMp2">
-        <img alt="Plover Discord" src="https://img.shields.io/discord/136953735426473984?logo=discord&logoColor=white" />
-    </a>
-</p>
+## Features
 
-| [Homepage][] | [Wiki][] | [Blog][] | [Google Group][] | [Discord](https://discord.com/invite/H5HnRE6) |
-| ------------ | -------- | -------- | ---------------- | --------------------------------------------- |
-
--   [About](#about)
--   [Installation](#installation)
--   [Getting help](#getting-help)
--   [Contributing](#contributing)
--   [Donations](#donations)
--   [Programming](#programming)
--   [Writing, Art, UX, and Web Design](#writing-art-ux-and-web-design)
--   [Development Environment and Building](#development-environment-and-building)
-
-## About
-
-Plover (rhymes with "lover") is a desktop application that allows anyone
-to use stenography to write on their computer, up to speeds of 200WPM
-and beyond.
-
-Plover is part of the [Open Steno Project][]. The Open Steno Project's
-goal is to provide everything you need to learn machine shorthand on
-your own, from free software, to cheap hardware, to learning resources.
-
-Plover is GPLv2+ as of version 3.1.0. See the [license][] for details.
+- **No UI**: Runs as a headless translation engine
+- **No keyboard capture**: Receives strokes via STDIO, doesn't capture keyboard
+- **Minimal dependencies**: Only requires `plover-stroke` and `rtf_tokenize`
+- **JSON line protocol**: Simple request/response protocol over STDIO
+- **Preedit/Commit model**: Output designed for IME integration
+- **Full dictionary support**: JSON and RTF dictionaries
+- **Stateful translation**: Supports multi-stroke translations and undo
 
 ## Installation
 
-Plover runs on Windows, Linux, and Mac.
+```bash
+pip install .
+```
 
-View the [installation guide][] which covers downloading, installation,
-and initial configuration.
+## Usage
 
-## Getting help
+```bash
+stripped_plover
+# or
+python -m plover
+```
 
-Having trouble with Plover?
+The engine reads JSON requests from stdin and writes JSON responses to stdout.
 
-The Wiki has several pages to help you:
+### Example Session
 
--   [Installation Guide][]
--   [Beginner's Guide][]
--   [Supported Hardware][]
--   [Troubleshooting Common Issues][]
+```
+$ stripped_plover
+{"status": "ready"}
+{"id": "1", "method": "add_dictionary", "params": {"path": "main.json"}}
+{"id": "1", "result": {"status": "ok", "path": "main.json", "entries": 150000}}
+{"id": "2", "method": "translate", "params": {"stroke": "TEFT"}}
+{"id": "2", "result": {"preedit": " test", "key_combinations": []}}
+{"id": "3", "method": "translate", "params": {"stroke": "-G"}}
+{"id": "3", "result": {"preedit": " testing", "key_combinations": []}}
+{"id": "4", "method": "commit", "params": {}}
+{"id": "4", "result": {"committed": " testing"}}
+{"id": "5", "method": "quit", "params": {}}
+{"id": "5", "result": {"status": "ok"}}
+```
 
-If you are still having trouble, have found a bug, or would like to
-request a new feature, please [search for or create an issue][issues].
-When making a new issue, fill out the form as best you can so that we
-can help you quickly.
+## Protocol
 
-If you are looking for more general support (i.e. you don't have a
-specific issue), consider joining the community. We are active on
-[Discord](https://discord.gg/0lQde43a6dGmAMp2), a live chatroom service; and on the [Google Group][],
-a more traditional mailing list.
+See [PROTOCOL.md](PROTOCOL.md) for complete protocol documentation.
 
-## Contributing
+### Key Methods
 
-The Open Steno Project is always growing, and could use your help!
+| Method | Description |
+|--------|-------------|
+| `translate` | Translate a stroke, returns updated preedit |
+| `commit` | Commit current preedit text |
+| `reset_state` | Reset translation state |
+| `add_dictionary` | Load a dictionary |
+| `remove_dictionary` | Unload a dictionary |
+| `lookup` | Look up a stroke |
+| `reverse_lookup` | Find strokes for a translation |
+| `quit` | Stop the engine |
 
-### Donations
+## MANIFESTO
 
-Plover is developed by volunteers. Donations to Open Steno help fund new
-projects as well as any maintenance costs with publishing Plover.
+See [MANIFESTO.md](MANIFESTO.md) for the design principles behind Stripped Plover.
 
-[Donate here][Donate], donations of any size are very appreciated!
+## Testing
 
-### Programming
+See [TESTING_REPORT.md](TESTING_REPORT.md) for the comprehensive test results.
 
-Plover is a cross-platform desktop application written in Python. To
-contribute to Plover, see [contributing][].
+## License
 
-If Python isn't your thing, there are other steno-related projects,
-including [StenoJig][] (JavaScript) and [StenoTray][] (Java).
+Stripped Plover is GPLv2+ licensed. See [LICENSE.txt](LICENSE.txt) for details.
 
-### Writing, Art, UX, and Web Design
-
--   The [Plover Wiki][Wiki] discusses Plover and Open Steno in
-    general. Edits to the Wiki and new page ideas are welcome.
--   Graphic art for Plover and stenography in general is always
-    appreciated. The app's icons are worked on at [panathea/plover\_icons][].
-    You may consider reimagining or reposing [Plover's mascot, Dolores][Mascot].
--   UX improvement suggestions are welcome. Plover runs on Windows, Mac,
-    and Linux, and should be powerful but out of the way, which poses
-    some interesting challenges. Please drop in to the Discord server to
-    brainstorm with users and the developers.
--   Open Steno has websites that accept contributions, including the
-    [Open Steno Project Homepage][Open Steno Project] ([source][Open Steno Project Homepage Source]) and [Plover's Homepage][Homepage]
-    ([source][Homepage Source]).
-
-## Development Environment and Building
-
-Plover is cross-platform and has separate build instructions for each
-platform.
-
-Please follow through for your system:
-
--   [Windows][Windows README]
--   [Linux][Linux README]
--   [Mac][macOS README]
-
-[Beginner's Guide]: https://plover.wiki/index.php/Beginner%27s_Guide
-[Blog]: http://plover.stenoknight.com
-[Contributing]: https://github.com/openstenoproject/plover/blob/main/CONTRIBUTING.md
-[Donate]: http://www.openstenoproject.org/donate
-[Google Group]: https://groups.google.com/forum/#!forum/ploversteno
-[Homepage Source]: https://github.com/openstenoproject/plover/tree/gh-pages
-[Homepage]: http://opensteno.org/plover
-[Issues]: https://github.com/openstenoproject/plover/issues?q=is:issue
-[License]: https://github.com/openstenoproject/plover/blob/main/LICENSE.txt
-[Open Steno Project Homepage Source]: https://github.com/openstenoproject/openstenoproject.github.io
-[Open Steno Project]: http://opensteno.org
-[Mascot]: http://plover.stenoknight.com/2010/10/new-logo.html
-[StenoJig]: https://github.com/JoshuaGrams/steno-jig
-[StenoTray]: https://github.com/SmackleFunky/StenoTray
-[Supported Hardware]: https://plover.wiki/index.php/Supported_hardware
-[Troubleshooting Common Issues]: https://plover.wiki/index.php/Troubleshooting_issues
-[Wiki]: https://plover.wiki
-[installation guide]: https://plover.wiki/index.php/Installation_Guide
-[panathea/plover\_icons]: https://github.com/panathea/plover_icons
-[Windows README]: https://github.com/openstenoproject/plover/blob/main/windows/README.md
-[Linux README]: https://github.com/openstenoproject/plover/blob/main/linux/README.md
-[macOS README]: https://github.com/openstenoproject/plover/blob/main/osx/README.md
+Based on [Plover](https://github.com/openstenoproject/plover) by the [Open Steno Project](http://opensteno.org).

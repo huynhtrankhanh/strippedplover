@@ -1,5 +1,0 @@
-certifi
-setuptools
-wheel
-
-# vim: ft=cfg commentstring=#\ %s list

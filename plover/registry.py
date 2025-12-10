@@ -2,7 +2,6 @@ from collections import namedtuple
 
 from importlib.metadata import entry_points, PackageNotFoundError
 
-from plover.oslayer.config import PLUGINS_PLATFORM
 from plover import log
 
 
@@ -21,14 +20,9 @@ PluginDistribution = namedtuple("PluginDistribution", "dist plugins")
 
 
 class Registry:
+    # Stripped Plover only needs these plugin types
     PLUGIN_TYPES = (
-        "command",
         "dictionary",
-        "extension",
-        "gui",
-        "gui.qt.machine_option",
-        "gui.qt.tool",
-        "machine",
         "macro",
         "meta",
         "system",
@@ -47,7 +41,6 @@ class Registry:
         return plugin
 
     def register_plugin_from_entrypoint(self, plugin_type, entrypoint):
-        log.info("%s: %s (from %s)", plugin_type, entrypoint.name, entrypoint.group)
         try:
             obj = entrypoint.load()
         except:
@@ -80,24 +73,9 @@ class Registry:
         return [dist for _, dist in sorted(self._distributions.items())]
 
     def update(self):
-        # Is support for the QT GUI available?
-        try:
-            qt_entry_points = entry_points(group="plover.gui")
-            has_gui_qt = any(ep.name == "qt" for ep in qt_entry_points)
-        except PackageNotFoundError:
-            has_gui_qt = False
-        # Register available plugins.
+        # Register available plugins for stripped plover.
         for plugin_type in self.PLUGIN_TYPES:
-            if plugin_type.startswith("gui.qt.") and not has_gui_qt:
-                continue
             entrypoint_type = f"plover.{plugin_type}"
-            for entrypoint in entry_points(group=entrypoint_type):
-                if "gui_qt" in entrypoint.extras and not has_gui_qt:
-                    continue
-                self.register_plugin_from_entrypoint(plugin_type, entrypoint)
-            if PLUGINS_PLATFORM is None:
-                continue
-            entrypoint_type = f"plover.{PLUGINS_PLATFORM}.{plugin_type}"
             for entrypoint in entry_points(group=entrypoint_type):
                 self.register_plugin_from_entrypoint(plugin_type, entrypoint)
 
