@@ -15,3 +15,4 @@
        * Literal keypress: Some translations are or contain literal keypresses
     * Resetting the internal translation state must be allowed
     * **Why is the translation process stateful in nature?** It is stateful because the translation depends on previous strokes. There are translations that are formed by multiple strokes.
+9. Delete all files not relevant to the goal
