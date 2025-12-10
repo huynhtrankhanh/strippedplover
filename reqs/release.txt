@@ -1,0 +1,6 @@
+packaging
+towncrier
+twine
+setuptools
+
+# vim: ft=cfg commentstring=#\ %s list

@@ -1,0 +1,69 @@
+# General.
+:usr
+  man
+  share/man
+:usr/lib
+  # **/libcrypto.so*
+  pkgconfig
+
+# Python.
+:usr/bin
+  !python
+  *
+:usr/lib/python${pyversion}
+  config-*/libpython*.a
+  ctypes/test
+  distutils/command/*.exe
+  distutils/tests
+  ensurepip
+  idlelib
+  lib-dynload/_tkinter.*
+  lib2to3/tests
+  sqlite3/test
+  test
+  tkinter
+  turtle*
+  unittest/test
+:usr/lib/python${pyversion}/site-packages
+  pip/_vendor/distlib/*.exe
+  setuptools/*.exe
+
+# PySide6.
+:usr/bin
+  pylupdate6
+  pyuic6
+:usr/lib/python${pyversion}/site-packages/PySide6
+  **/*[Aa]ssistant*
+  **/*[Dd]esigner*
+  **/*[Hh]elp*
+  **/*[Ll]inguist*
+  **/*[Oo]pen[Gg][Ll]*
+  **/*[Qq]ml*
+  **/*[Qq]uick*
+  **/*[Ss]ql*
+  **/*[Tt]est*
+  **/*[Ww]eb[Ee]ngine*
+  **/*.tmpl.py
+  bindings
+  lupdate
+  lrelease
+  Qt/plugins/egldeviceintegrations
+  Qt/plugins/geoservices
+  Qt/plugins/platforms/libqeglfs.so
+  Qt/plugins/platforms/libqlinuxfb.so
+  Qt/plugins/platforms/libqminimal.so
+  Qt/plugins/platforms/libqminimalegl.so
+  Qt/plugins/platforms/libqoffscreen.so
+  Qt/plugins/platforms/libqvnc.so
+  Qt/plugins/platforms/libqwebgl.so
+  Qt/plugins/sceneparsers
+  Qt/plugins/webview
+  Qt/translations/qtdeclarative_*
+  pylupdate*
+  uic
+
+# Plover.
+:usr/lib/python${pyversion}/site-packages/plover
+  gui_qt/*.ui
+  messages/**/*.po
+  messages/plover.pot

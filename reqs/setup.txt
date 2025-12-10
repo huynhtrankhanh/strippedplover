@@ -1,0 +1,6 @@
+Babel
+PySide6-Essentials
+setuptools
+wheel
+
+# vim: ft=cfg commentstring=#\ %s list

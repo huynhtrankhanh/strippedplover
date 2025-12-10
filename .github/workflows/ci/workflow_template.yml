@@ -1,0 +1,457 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'maintenance/*'
+    tags:
+      - 'v*'
+  pull_request:
+    types:
+        - opened
+        - reopened
+        - synchronize
+
+defaults:
+  run:
+    # Powershell on Windows? No thank you...
+    shell: bash --noprofile --norc -eo pipefail .github/workflows/ci/helpers.sh . {0}
+
+jobs:
+
+  # Job: Analyze {{{
+  analyze:
+
+    name: Analyze
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout
+        uses: <@ action_checkout @>
+
+    <% if skippy_enabled %>
+      - name: Calculate skip cache keys
+        id: set_cache
+        run: |
+          <% for j in jobs %>
+          <@ j.shell_definition @>; analyze_set_job_skip_cache_key
+          <% endfor %>
+
+      <% for j in jobs %>
+      - name: Check skip cache for <@ j.name @>
+        uses: actions/cache@v3
+        with:
+          path: <@ j.skip_cache_path @>
+          key: <@ cache_epoch @>_check_${{ steps.set_cache.outputs.<@ j.id @>_skip_cache_key }}_${{ github.run_id }}
+          restore-keys:
+            <@ cache_epoch @>_${{ steps.set_cache.outputs.<@ j.id @>_skip_cache_key }}
+
+      <% endfor %>
+      <% endif %>
+      - name: Set outputs
+        id: set_ouputs
+        run: |
+          analyze_set_release_info
+          <% for j in jobs %>
+          <% if skippy_enabled %>
+          <@ j.shell_definition @>; analyze_set_job_skip_job
+          <% else %>
+          echo "<@ j.id @>_skip_job=no" >> $GITHUB_OUTPUT
+          <% endif %>
+          <% endfor %>
+
+    outputs:
+      is_release: ${{ steps.set_ouputs.outputs.is_release }}
+      release_type: ${{ steps.set_ouputs.outputs.release_type }}
+      <% for j in jobs %>
+      <@ j.id @>_skip_job: ${{ steps.set_ouputs.outputs.<@ j.id @>_skip_job }}
+      <@ j.id @>_skip_cache_key: ${{ steps.set_cache.outputs.<@ j.id @>_skip_cache_key }}
+      <% endfor %>
+      release_skip_job: ${{ steps.set_ouputs.outputs.release_skip_job }}
+  # }}}
+
+  <% for j in jobs %>
+  # Job: <@ j.name @> {{{
+  <@ j.id @>:
+
+    name: <@ j.name @>
+    <% if j.os == 'macOS' and j.type == 'notarize' %>
+    environment: production
+    <% endif %>
+    runs-on: <@ j.platform @>
+    needs: [analyze, <@ j.needs|join(', ') @>]
+    if: >-
+      !cancelled()
+      <% for need_id in j.needs %>
+      && (needs.<@ need_id @>.result == 'success' || needs.<@ need_id @>.result == 'skipped')
+      <% endfor %>
+      && needs.analyze.outputs.<@ j.id @>_skip_job == 'no'
+    <% if j.os == 'macOS' and j.type == 'notarize' %>
+    env:
+      # Code signing
+      MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+      MACOS_CODESIGN_CERT_P12_BASE64: ${{ secrets.MACOS_CODESIGN_CERT_P12_BASE64 }}
+      MACOS_CODESIGN_CERT_PASSWORD: ${{ secrets.MACOS_CODESIGN_CERT_PASSWORD }}
+      MACOS_TEMP_KEYCHAIN_NAME: plover-build
+      MACOS_TEMP_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_TEMP_KEYCHAIN_PASSWORD }}
+      # Notarization
+      MACOS_NOTARIZE_ENABLED: ${{ secrets.MACOS_NOTARIZE_ENABLED || '0' }}
+      MACOS_NOTARIZE_TEAM_ID: ${{ secrets.MACOS_NOTARIZE_TEAM_ID }}
+      MACOS_NOTARIZE_KEY_ID: ${{ secrets.MACOS_NOTARIZE_KEY_ID }}
+      MACOS_NOTARIZE_ISSUER_ID: ${{ secrets.MACOS_NOTARIZE_ISSUER_ID }}
+      MACOS_NOTARIZE_KEY_CONTENTS: ${{ secrets.MACOS_NOTARIZE_KEY_CONTENTS }}
+    <% endif %>
+
+    steps:
+
+      - name: Checkout
+        uses: <@ action_checkout @>
+      <% if j.type in ['build', 'test_packaging'] %>
+        with:
+          # We need the whole history for patching the version.
+          fetch-depth: 0
+      <% endif %>
+
+      <% if j.os != 'macOS' %>
+      - name: Setup Python
+        uses: <@ action_setup_python @>
+        with:
+          python-version: '<@ j.python @>'
+
+      <% endif %>
+      <% if skippy_enabled and j.os == 'Windows' %>
+      # On Windows, ensure we use a tar compatible
+      # with the one used in the analyze job.
+      - name: Fix tar
+        run: rm C:/Windows/System32/tar
+
+      <% endif %>
+      - name: Set cache name
+        id: set_cache
+        run: setup_cache_name '<@ j.python @>' '<@ j.platform @>'
+
+      - name: Setup cache
+        uses: <@ action_cache @>
+        with:
+          path: .cache
+          key: <@ cache_epoch @>_${{ steps.set_cache.outputs.cache_name }}_${{ hashFiles('reqs/constraints.txt'<% for d in (j.reqs + j.cache_extra_deps) %><@ ', %r' % d @><% endfor %>) }}
+
+      <% if j.os == 'macOS' and j.type != 'notarize' %>
+      # To support older macOS versions, setup Python from an official installer.
+      - name: Setup Python
+        run: setup_osx_python '<@ j.python @>'
+
+      <% endif %>
+      <% if j.type in ['build', 'test_gui_qt'] and j.os == 'Linux' %>
+      - name: Install system dependencies
+        run: apt_get_install cmake libdbus-1-dev libdbus-glib-1-dev libudev-dev libusb-1.0-0-dev libegl-dev libxkbcommon-x11-0
+
+      <% endif %>
+      <% if j.type != 'notarize' %>
+      - name: Setup Python environment
+        run: setup_python_env -c reqs/constraints.txt<% for r in j.reqs %> -r <@ r @><% endfor %>
+        
+
+      <% endif %>
+      <% if j.type == 'test_code_quality' %>
+      - name: Run Ruff (format check)
+        run: ruff format --check .
+
+      <% endif %>
+      <% if j.type in ['build', 'test_packaging'] %>
+      - name: Patch version
+        id: set_version
+        run: |
+          python setup.py patch_version
+          <% if j.type == 'test_packaging' %>
+          echo "version=$(python setup.py --version)" >> $GITHUB_OUTPUT
+          <% endif %>
+
+      <% endif %>
+      <% if j.type == 'test_gui_qt' %>
+      - name: Build UI
+        run: python setup.py build_ui
+
+      <% endif %>
+      <% if j.type in ['test', 'test_gui_qt'] %>
+      # Test {{{
+
+      - name: Run tests
+        run: run_tests <@ j.test_args @>
+
+
+      # }}}
+
+      <% endif %>
+      <% if j.type == 'test_packaging' %>
+      # Test packaging {{{
+
+      - name: Run packaging sanity checks
+        run: packaging_checks
+
+      - name: Archive artifact (sdist)
+        if: needs.analyze.outputs.is_release == 'yes'
+        uses: <@ action_upload_artifact @>
+        with:
+          name: Source
+          path: dist/*.tar.gz
+
+      - name: Archive artifact (wheel)
+        if: needs.analyze.outputs.is_release == 'yes'
+        uses: <@ action_upload_artifact @>
+        with:
+          name: Wheel
+          path: dist/*.whl
+
+      - name: Generate translations catalogs archive
+        if: needs.analyze.outputs.is_release == 'yes'
+        run: generate_translations_catalogs_archive
+
+      - name: Archive artifact (translations catalogs)
+        if: needs.analyze.outputs.is_release == 'yes'
+        uses: <@ action_upload_artifact @>
+        with:
+          name: Translations Catalogs
+          path: dist/*-messages.zip
+
+      # }}}
+
+      <% endif %>
+      <% if j.type == 'build' %>
+      # Build {{{
+
+      <% if j.os == 'Linux' %>
+      - name: Build distribution (Linux AppImage)
+        run: python setup.py -q bdist_appimage --no-update-tools
+
+      - name: Archive artifact (Linux AppImage)
+        uses: <@ action_upload_artifact @>
+        with:
+          name: Linux AppImage
+          path: dist/*.AppImage
+
+      <% endif %>
+      <% if j.os == 'macOS' %>
+      <% if j.type == 'build' and j.variant == 'macOS App' %>
+      - name: Build distribution (macOS app)
+        run: python setup.py -q bdist_app
+
+      - name: Pack app as tar (preserve symlinks)
+        run: |
+          rm -f dist/Plover.app.tgz
+          tar -C dist -czf dist/Plover.app.tgz Plover.app
+
+      - name: Save app tarball to internal cache
+        uses: <@ action_cache_save @>
+        with:
+          path: dist/Plover.app.tgz
+          key: <@ cache_epoch @>_macos-app-raw-${{ github.run_id }}
+
+      <% elif j.type == 'build' and j.variant == 'macOS DMG' %>
+      - name: Restore app tarball from internal cache (prefer notarized)
+        uses: <@ action_cache_restore @>
+        with:
+          path: dist/Plover.app.tgz
+          key: <@ cache_epoch @>_macos-app-notarized-${{ github.run_id }}
+          restore-keys: <@ cache_epoch @>_macos-app-raw-${{ github.run_id }}
+
+      - name: Extract app tarball
+        run: |
+          mkdir -p dist
+          tgz="$(ls -1 dist/*.tgz)"
+          echo "Using: $tgz"
+          tar -C dist -xzf "$tgz"
+
+      - name: Ensure app exists
+        run: test -d dist/*.app
+
+      - name: Build distribution (macOS DMG from existing app)
+        run: python setup.py -q bdist_dmg --skip-app-build
+
+      - name: Upload artifact (macOS DMG)
+        uses: <@ action_upload_artifact @>
+        with:
+          name: macOS DMG
+          path: dist/*.dmg
+          overwrite: true
+      <% endif %>
+      <% endif %>
+      <% if j.os == 'Windows' %>
+      - name: Build distributions (Windows)
+        run: |
+          # Note: we avoid using the WSL bash (which does not work).
+          bash="$(cygpath -w -a "$(which bash)")"
+          python setup.py -q bdist_win -t -z -i --bash="$bash"
+
+      - name: Archive artifact (Windows Installer)
+        uses: <@ action_upload_artifact @>
+        with:
+          name: Windows Installer
+          path: dist/*.exe
+
+      - name: Archive artifact (Windows ZIP)
+        uses: <@ action_upload_artifact @>
+        with:
+          name: Windows ZIP
+          path: dist/*.zip
+
+      <% endif %>
+      # }}}
+
+      <% endif %>
+      <% if j.os == 'macOS' and j.type == 'notarize' %>
+      # Notarize {{{
+
+      <% if j.variant == 'macOS App' %>
+      - name: Restore app tarball from internal cache
+        uses: <@ action_cache_restore @>
+        with:
+          path: dist/Plover.app.tgz
+          key: <@ cache_epoch @>_macos-app-raw-${{ github.run_id }}
+
+      - name: Extract app tarball
+        run: |
+          mkdir -p dist
+          tar -C dist -xzf dist/*.tgz
+
+      - name: Install Developer ID certificate into temporary keychain
+        if: ${{ env.MACOS_NOTARIZE_ENABLED == '1' }}
+        run: install_dev_id_cert_into_temp_keychain
+
+      - name: Set codesign keychain env
+        run: echo "MACOS_CODESIGN_KEYCHAIN=${MACOS_TEMP_KEYCHAIN_NAME}.keychain" >> $GITHUB_ENV
+
+      - name: Notarize & staple app
+        run: |
+          chmod +x osx/notarize_app.sh
+          ./osx/notarize_app.sh dist/*.app
+
+      - name: Cleanup temporary keychain
+        if: ${{ always() && env.MACOS_NOTARIZE_ENABLED == '1' }}
+        run: cleanup_dev_id_temp_keychain
+
+      - name: Repack notarized app as tar
+        run: |
+          rm -f dist/Plover.app.tgz
+          tar -C dist -czf dist/Plover.app.tgz Plover.app
+
+      - name: Save notarized app tarball to internal cache
+        uses: <@ action_cache_save @>
+        with:
+          path: dist/Plover.app.tgz
+          key: <@ cache_epoch @>_macos-app-notarized-${{ github.run_id }}
+
+      <% elif j.variant == 'macOS DMG' %>
+      - name: Download artifact (macOS DMG)
+        uses: <@ action_download_artifact @>
+        with:
+          name: macOS DMG
+          path: dist
+          pattern: "*.dmg"
+
+      - name: Install Developer ID certificate into temporary keychain
+        if: ${{ env.MACOS_NOTARIZE_ENABLED == '1' }}
+        run: install_dev_id_cert_into_temp_keychain
+
+      - name: Set codesign keychain env
+        run: echo "MACOS_CODESIGN_KEYCHAIN=${MACOS_TEMP_KEYCHAIN_NAME}.keychain" >> $GITHUB_ENV
+
+      - name: Notarize & staple DMG
+        run: |
+          chmod +x osx/notarize_dmg.sh
+          ./osx/notarize_dmg.sh dist/*.dmg
+
+      - name: Cleanup temporary keychain
+        if: ${{ always() && env.MACOS_NOTARIZE_ENABLED == '1' }}
+        run: cleanup_dev_id_temp_keychain
+
+      - name: Upload artifact (macOS DMG)
+        uses: <@ action_upload_artifact @>
+        with:
+          name: macOS DMG
+          path: dist/*.dmg
+          overwrite: true
+      <% endif %>
+
+      # }}}
+      <% endif %>
+      <% if skippy_enabled %>
+      - name: Update skip cache 1
+        uses: <@ action_cache @>
+        with:
+          path: <@ j.skip_cache_path @>
+          key: <@ cache_epoch @>_${{ needs.analyze.outputs.<@ j.id @>_skip_cache_key }}
+
+      - name: Update skip cache 2
+        run: run_eval "echo 'https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID' >'<@ j.skip_cache_path @>'"
+
+      <% endif %>
+      - name: List cache contents
+        run: list_cache
+    <% if j.type == 'test_packaging' %>
+
+    outputs:
+      version: ${{ steps.set_version.outputs.version }}
+    <% endif %>
+  # }}}
+
+  <% endfor %>
+  # Job: Release {{{
+  release:
+
+    name: Release
+    environment: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    needs: [analyze, <@ jobs|join(', ', attribute='id') @>]
+    if: >-
+      !cancelled()
+      <% for j in jobs %>
+      && needs.<@ j.id @>.result == 'success'
+      <% endfor %>
+      && needs.analyze.outputs.release_skip_job == 'no'
+
+    steps:
+
+      - name: Checkout
+        uses: <@ action_checkout @>
+
+      - name: Setup Python
+        uses: <@ action_setup_python @>
+        with:
+          python-version: <@ default_python @>
+
+      - name: Install dependencies
+        run: |
+          run apt_get_install -qq pandoc
+          run "$python" -m pip install -c reqs/constraints.txt -r reqs/release.txt
+
+      - name: Download artifacts
+        uses: <@ action_download_artifact @>
+        with:
+          path: dist
+
+      - name: Publish GitHub release (${{ needs.analyze.outputs.release_type }})
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TYPE: ${{ needs.analyze.outputs.release_type }}
+          RELEASE_VERSION: ${{ needs.test_packaging.outputs.version }}
+        run: publish_github_release
+
+      - name: Collect Python distributions for PyPI
+        run: |
+          mkdir -p dist/pypi
+          cp dist/Source/*.tar.gz dist/pypi/
+          cp dist/Wheel/*.whl dist/pypi/
+
+      - name: Publish release to PyPI (Trusted Publishing)
+        if: needs.analyze.outputs.release_type == 'tagged'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/pypi
+          skip-existing: true
+  # }}}
