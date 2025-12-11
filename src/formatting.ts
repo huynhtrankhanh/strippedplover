@@ -774,7 +774,8 @@ function applyMode(
   lastAction: Action
 ): string {
   // Should title case be applied?
-  const lowerTitleCase = begin && ![Case.CAP_FIRST_WORD, Case.UPPER_FIRST_WORD].includes(lastAction.case!);
+  const lowerTitleCase = begin && (lastAction.case === null || 
+    (lastAction.case !== Case.CAP_FIRST_WORD && lastAction.case !== Case.UPPER_FIRST_WORD));
 
   // Apply case, then replace space character
   text = applyModeCase(text, caseMode, lowerTitleCase);

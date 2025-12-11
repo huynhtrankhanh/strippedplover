@@ -4,7 +4,7 @@
  * Handles loading dictionaries from JSON files.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { StenoDictionary } from './steno-dictionary.js';
 import { normalizeSteno } from '../stroke.js';
 
@@ -58,8 +58,6 @@ export function loadDictionary(path: string): StenoDictionary {
  * Save a dictionary to a JSON file
  */
 export function saveDictionaryToJson(dict: StenoDictionary, path: string): void {
-  const { writeFileSync } = require('node:fs');
-  
   // Get all entries and sort by stroke
   const entries = dict.items();
   entries.sort((a, b) => {

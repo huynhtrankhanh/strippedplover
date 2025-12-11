@@ -200,16 +200,44 @@ export class StrippedPlover {
 
   private handleSetConfig(cmdline: string): void {
     try {
-      // Parse the config string as a simple object
-      const optDict = JSON.parse(`{${cmdline.replace(/'/g, '"')}}`);
+      // Parse the config string - only accept known keys with safe values
+      // Format expected: 'start_attached': true, 'start_capitalized': false, 'space_char': ' '
+      const parts = cmdline.split(',').map(p => p.trim());
+      const config: Record<string, unknown> = {};
+      
+      for (const part of parts) {
+        const match = part.match(/^['"]?(\w+)['"]?\s*:\s*(.+)$/);
+        if (match) {
+          const key = match[1];
+          let value = match[2].trim();
+          
+          // Only allow known keys
+          if (!['start_attached', 'start_capitalized', 'space_char'].includes(key)) {
+            continue;
+          }
+          
+          // Parse value safely
+          if (value === 'true') {
+            config[key] = true;
+          } else if (value === 'false') {
+            config[key] = false;
+          } else if (value.startsWith("'") && value.endsWith("'")) {
+            config[key] = value.slice(1, -1);
+          } else if (value.startsWith('"') && value.endsWith('"')) {
+            config[key] = value.slice(1, -1);
+          }
+        }
+      }
 
-      if (typeof optDict !== 'object') return;
+      const attach = config.start_attached ?? this.startingStrokeState.attach;
+      const capitalize = config.start_capitalized ?? this.startingStrokeState.capitalize;
+      const spaceChar = config.space_char ?? this.startingStrokeState.spaceChar;
 
-      const attach = optDict.start_attached ?? this.startingStrokeState.attach;
-      const capitalize = optDict.start_capitalized ?? this.startingStrokeState.capitalize;
-      const spaceChar = optDict.space_char ?? this.startingStrokeState.spaceChar;
-
-      this.startingStrokeState = { attach, capitalize, spaceChar };
+      this.startingStrokeState = { 
+        attach: Boolean(attach), 
+        capitalize: Boolean(capitalize), 
+        spaceChar: String(spaceChar) 
+      };
       this.applyStartingStrokeState();
     } catch {
       // Invalid syntax, ignore

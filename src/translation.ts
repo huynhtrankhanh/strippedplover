@@ -24,18 +24,44 @@ export function escapeTranslation(translation: string): string {
   return translation.replace(ESCAPE_RX, m => ESCAPE_REPLACEMENTS[m] ?? m);
 }
 
-const UNESCAPE_RX = /((?<!\\)|\\)\\([nrt])/g;
-const UNESCAPE_REPLACEMENTS: Record<string, string> = {
-  '\\\\n': '\\n',
-  '\\\\r': '\\r',
-  '\\\\t': '\\t',
-  '\\n': '\n',
-  '\\r': '\r',
-  '\\t': '\t',
-};
+// Unescape translation - simpler approach without lookbehind
+function unescapeTranslationInternal(translation: string): string {
+  let result = '';
+  let i = 0;
+  while (i < translation.length) {
+    if (translation[i] === '\\' && i + 1 < translation.length) {
+      const next = translation[i + 1];
+      if (next === '\\' && i + 2 < translation.length) {
+        const afterDouble = translation[i + 2];
+        if (afterDouble === 'n' || afterDouble === 'r' || afterDouble === 't') {
+          // \\n -> \n (literal backslash + letter)
+          result += '\\' + afterDouble;
+          i += 3;
+          continue;
+        }
+      }
+      if (next === 'n') {
+        result += '\n';
+        i += 2;
+        continue;
+      } else if (next === 'r') {
+        result += '\r';
+        i += 2;
+        continue;
+      } else if (next === 't') {
+        result += '\t';
+        i += 2;
+        continue;
+      }
+    }
+    result += translation[i];
+    i++;
+  }
+  return result;
+}
 
 export function unescapeTranslation(translation: string): string {
-  return translation.replace(UNESCAPE_RX, m => UNESCAPE_REPLACEMENTS[m] ?? m);
+  return unescapeTranslationInternal(translation);
 }
 
 // Legacy macro aliases
@@ -123,7 +149,11 @@ export class Translation {
   toString(): string {
     let translation = 'None';
     if (this.english !== null) {
-      translation = `"${escapeTranslation(this.english).replace(/"/g, '\\"')}"`;
+      // Escape backslashes first, then quotes for display
+      const escaped = escapeTranslation(this.english)
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"');
+      translation = `"${escaped}"`;
     }
     return `Translation(${this.rtfcre.join('/')} : ${translation})`;
   }
