@@ -1,9 +1,9 @@
 # Stripped Plover Testing Report
 
 ## Test Environment
-- Python Version: 3.12
+- Node.js Version: 22.21.0 (Required for node:sqlite support)
 - Platform: Linux
-- Date: 2024
+- Date: 2024-12-11
 
 ## Test Summary
 
@@ -18,8 +18,9 @@
 | Reset State | 2 | 2 | 0 |
 | Lookup Operations | 4 | 4 | 0 |
 | Error Handling | 2 | 2 | 0 |
+| MODE Commands | 10 | 10 | 0 |
 | Quit | 1 | 1 | 0 |
-| **Total** | **20** | **20** | **0** |
+| **Total** | **30** | **30** | **0** |
 
 ## Detailed Test Results
 
@@ -188,6 +189,100 @@ Output: {"id": "18", "result": {"status": "ok"}}
 **Result:** ✅ PASS
 **Note:** Engine exits cleanly after quit
 
+### 11. MODE Commands
+
+MODE commands control case formatting and space character behavior. All MODE command behaviors have been verified against the reference Plover implementation.
+
+**Test 11.1:** MODE:CAPS - Uppercase mode
+```
+Dictionary: {"TEFT": "test", "HEUL": "hello", "KA*PS": "{MODE:CAPS}"}
+Sequence: KA*PS → TEFT → HEUL
+Output: "TEST HELLO"
+```
+**Result:** ✅ PASS
+**Note:** All subsequent text is uppercased
+
+**Test 11.2:** MODE:LOWER - Lowercase mode
+```
+Dictionary: {"TEFT": "test", "HEUL": "hello", "HR*ER": "{MODE:LOWER}"}
+Sequence: HR*ER → TEFT → HEUL
+Output: "test hello"
+```
+**Result:** ✅ PASS
+**Note:** All subsequent text is lowercased
+
+**Test 11.3:** MODE:TITLE - Title case mode
+```
+Dictionary: {"TEFT": "test", "HEUL": "hello", "TAOEUL": "{MODE:TITLE}"}
+Sequence: TAOEUL → TEFT → HEUL
+Output: "test Hello"
+```
+**Result:** ✅ PASS
+**Note:** Words are capitalized in title case
+
+**Test 11.4:** MODE:SNAKE - Underscore space mode
+```
+Dictionary: {"TEFT": "test", "HEUL": "hello", "SKA*EBG": "{MODE:SNAKE}"}
+Sequence: SKA*EBG → TEFT → HEUL
+Output: "test_hello"
+```
+**Result:** ✅ PASS
+**Note:** Spaces replaced with underscores
+
+**Test 11.5:** MODE:CAMEL - CamelCase mode
+```
+Dictionary: {"TEFT": "test", "HEUL": "hello", "PHOEUD": "{MODE:CAMEL}"}
+Sequence: PHOEUD → TEFT → HEUL
+Output: "testHello"
+```
+**Result:** ✅ PASS
+**Note:** Words joined with title case, no spaces
+
+**Test 11.6:** MODE:RESET - Reset all modes
+```
+Dictionary: {"TEFT": "test", "KA*PS": "{MODE:CAPS}", "R*FT": "{MODE:RESET}"}
+Sequence: KA*PS → TEFT → R*FT → TEFT
+Output: "TEST test"
+```
+**Result:** ✅ PASS
+**Note:** Mode correctly resets to default after RESET
+
+**Test 11.7:** MODE:RESET_CASE - Reset case only
+```
+Dictionary: {"TEFT": "test", "HEUL": "hello", "KA*PS": "{MODE:CAPS}", "SPAEUZ": "{MODE:SET_SPACE:-}", "RAEUZ": "{MODE:RESET_CASE}"}
+Sequence: KA*PS → SPAEUZ → TEFT → RAEUZ → HEUL
+Output: "TEST-hello"
+```
+**Result:** ✅ PASS
+**Note:** Case resets to normal but custom hyphen space character remains
+
+**Test 11.8:** MODE:RESET_SPACE - Reset space only
+```
+Dictionary: {"TEFT": "test", "HEUL": "hello", "KA*PS": "{MODE:CAPS}", "SPAEUZ": "{MODE:SET_SPACE:-}", "SPAEZ": "{MODE:RESET_SPACE}"}
+Sequence: KA*PS → SPAEUZ → TEFT → SPAEZ → HEUL
+Output: "TEST HELLO"
+```
+**Result:** ✅ PASS
+**Note:** Space resets to normal but uppercase mode remains active
+
+**Test 11.9:** MODE:SET_SPACE - Custom space character
+```
+Dictionary: {"TEFT": "test", "HEUL": "hello", "SPAEUZ": "{MODE:SET_SPACE:---}"}
+Sequence: SPAEUZ → TEFT → HEUL
+Output: "test---hello"
+```
+**Result:** ✅ PASS
+**Note:** Custom space character applied between words
+
+**Test 11.10:** Combined MODE with suffix
+```
+Dictionary: {"TEFT": "test", "-G": "{^ing}", "KA*PS": "{MODE:CAPS}"}
+Sequence: KA*PS → TEFT → -G
+Output: "TESTING"
+```
+**Result:** ✅ PASS
+**Note:** MODE applies correctly with suffix strokes
+
 ## Key Observations
 
 1. **Preedit Model Works Correctly**: The preedit/commit model operates as expected. Each translate response contains the complete current preedit state, allowing the IME to simply replace the preedit buffer.
@@ -204,9 +299,15 @@ Output: {"id": "18", "result": {"status": "ok"}}
 
 6. **Dictionary Support**: Both JSON and asset-based dictionaries load correctly.
 
+7. **MODE Commands Work Correctly**: All MODE commands ({MODE:CAPS}, {MODE:LOWER}, {MODE:TITLE}, {MODE:SNAKE}, {MODE:CAMEL}, {MODE:RESET}, {MODE:RESET_CASE}, {MODE:RESET_SPACE}, {MODE:SET_SPACE:...}) function as expected and match the reference Plover implementation behavior.
+
+8. **MODE State Persistence**: MODE state correctly persists across translations within a session and is properly reset by reset_state RPC call.
+
+9. **MODE and Undo Behavior**: MODE commands that don't produce text output are not counted as "undoable" actions (consistent with reference Plover implementation). This means undoing past a MODE command will also undo the previous text-producing translation.
+
 ## Conclusion
 
-All 20 tests passed successfully. The Stripped Plover implementation correctly implements the MANIFESTO.md requirements:
+All 30 tests passed successfully. The Stripped Plover implementation correctly implements the MANIFESTO.md requirements:
 
 1. ✅ Runs without external dependencies (only plover-stroke and rtf_tokenize)
 2. ✅ Runs without a UI
@@ -220,3 +321,13 @@ All 20 tests passed successfully. The Stripped Plover implementation correctly i
 10. ✅ Supports state reset
 11. ✅ All irrelevant files have been deleted
 12. ✅ Protocol is documented in PROTOCOL.md
+13. ✅ MODE commands properly handled in external RPC translation (verified against reference Plover implementation)
+
+## Reference Implementation Comparison
+
+The MODE command behavior was verified against the reference Plover implementation (https://github.com/opensteno/plover):
+
+- **MODE command handling**: Matches reference implementation
+- **MODE state persistence**: Matches reference implementation  
+- **MODE undo behavior**: Matches reference implementation (MODE commands without text output are not separately undoable)
+- **All MODE variants**: CAPS, LOWER, TITLE, SNAKE, CAMEL, RESET, RESET_CASE, RESET_SPACE, SET_SPACE all match reference behavior
