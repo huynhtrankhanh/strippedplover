@@ -30,23 +30,6 @@ python -m plover
 
 The engine reads JSON requests from stdin and writes JSON responses to stdout.
 
-### Example Session
-
-```
-$ stripped_plover
-{"status": "ready"}
-{"id": "1", "method": "add_dictionary", "params": {"path": "main.json"}}
-{"id": "1", "result": {"status": "ok", "path": "main.json", "entries": 150000}}
-{"id": "2", "method": "translate", "params": {"stroke": "TEFT"}}
-{"id": "2", "result": {"preedit": " test", "key_combinations": []}}
-{"id": "3", "method": "translate", "params": {"stroke": "-G"}}
-{"id": "3", "result": {"preedit": " testing", "key_combinations": []}}
-{"id": "4", "method": "commit", "params": {}}
-{"id": "4", "result": {"committed": " testing"}}
-{"id": "5", "method": "quit", "params": {}}
-{"id": "5", "result": {"status": "ok"}}
-```
-
 ## Protocol
 
 See [PROTOCOL.md](PROTOCOL.md) for complete protocol documentation.
@@ -56,7 +39,6 @@ See [PROTOCOL.md](PROTOCOL.md) for complete protocol documentation.
 | Method | Description |
 |--------|-------------|
 | `translate` | Translate a stroke, returns updated preedit |
-| `commit` | Commit current preedit text |
 | `reset_state` | Reset translation state |
 | `add_dictionary` | Load a dictionary |
 | `remove_dictionary` | Unload a dictionary |
