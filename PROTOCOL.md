@@ -55,14 +55,42 @@ When Stripped Plover starts, it outputs a ready message:
 {"status": "ready"}
 ```
 
-## Output Model: Preedit and Commit
+## Output Model: Structured Array Response
 
-Stripped Plover uses a preedit/commit model suitable for IME integration:
+Stripped Plover uses a structured array output model suitable for IME integration:
 
-- **Preedit**: Uncommitted text that can be completely replaced by subsequent strokes. The IME should display this as "composing" text.
-- **Commit**: Finalized text that the user has explicitly confirmed.
+The `translate` method returns an array of output elements. Each element is one of three types:
+
+1. **Committed Text** (`type: "committed"`): Text that has been finalized and cannot be undone. This occurs when a key combination forces a commit of pending preedit.
+
+2. **Keypress** (`type: "keypress"`): A literal key combination to execute (e.g., Ctrl+C).
+
+3. **Preedit** (`type: "preedit"`): Current uncommitted text that can be replaced by subsequent strokes.
+
+**Important:** Commitment is not an externally triggered event. It happens automatically when:
+- A key combination is encountered in a translation (the preedit is committed before the keypress)
+- The engine determines that text should be finalized
 
 This model eliminates the need for backspaces - instead, the entire preedit buffer is replaced with each stroke.
+
+## Engine State
+
+The engine maintains state that affects capitalization and space output:
+
+- **attach**: Whether to suppress the initial space before the first word (default: `true`)
+- **capitalize**: Whether to capitalize the first word (default: `false`)  
+- **space_char**: Character to use for spaces (default: `" "`)
+
+When the engine starts or is reset, it is in the "initial" state:
+- No initial space is emitted before the first output
+- After output is produced, subsequent translations may include a leading space depending on the engine state
+
+Engine commands are supported through dictionary translations using `{PLOVER:command}` syntax, except for:
+- `PLOVER:TOGGLE` - Not supported (no-op)
+- `PLOVER:STOP` - Not supported (no-op)
+- `PLOVER:RESUME` - Not supported (no-op)
+- `PLOVER:SUSPEND` - Not supported (no-op)
+- `PLOVER:QUIT` - Not supported (no-op)
 
 ## Methods
 
@@ -88,61 +116,55 @@ Translate a stenotype stroke. The translation engine is stateful - it considers 
 {
   "id": "1",
   "result": {
-    "preedit": "test",
-    "key_combinations": []
+    "output": [
+      {"type": "preedit", "text": "test"}
+    ]
   }
 }
 ```
 
-The response includes:
-- `preedit`: The complete current preedit text. Replace any existing preedit with this value.
-- `key_combinations`: Array of literal key combinations to execute (e.g., `["Control_L(c)"]`)
+The `output` array contains elements in order:
+- `{"type": "committed", "text": "..."}` - Text that was finalized (e.g., before a keypress)
+- `{"type": "keypress", "combo": "..."}` - Literal key combination to execute
+- `{"type": "preedit", "text": "..."}` - Current uncommitted text (always last if present)
 
 **Example multi-stroke session:**
 ```
 Input: TEFT
-Response: {"preedit": "test", "key_combinations": []}
+Response: {"output": [{"type": "preedit", "text": "test"}]}
 
 Input: -G
-Response: {"preedit": "testing", "key_combinations": []}  // Entire preedit updated
+Response: {"output": [{"type": "preedit", "text": "testing"}]}  // Entire preedit updated
 
 Input: *  (undo stroke)
-Response: {"preedit": "test", "key_combinations": []}  // Reverts to previous state
+Response: {"output": [{"type": "preedit", "text": "test"}]}  // Reverts to previous state
 ```
 
-#### `commit`
+**Example with key combination:**
 
-Commit the current preedit text. This finalizes the preedit and clears it.
-
-**Request:**
+If a translation contains `{#Control_L(c)}` (Ctrl+C):
 ```json
 {
-  "id": "2",
-  "method": "commit",
-  "params": {}
-}
-```
-
-**Response:**
-```json
-{
-  "id": "2",
+  "id": "1",
   "result": {
-    "committed": "test"
+    "output": [
+      {"type": "committed", "text": "previous text"},
+      {"type": "keypress", "combo": "Control_L(c)"}
+    ]
   }
 }
 ```
 
-After commit, the preedit is cleared but the translation state is preserved for multi-stroke translations.
+The preedit is committed before the keypress because literal keypresses cannot be undone.
 
 #### `reset_state`
 
-Reset the translation state completely. This clears both the translator state and the preedit buffer.
+Reset the translation state completely. This clears the translator state, the preedit buffer, and resets the engine to initial state (no initial space will be emitted).
 
 **Request:**
 ```json
 {
-  "id": "3",
+  "id": "2",
   "method": "reset_state",
   "params": {}
 }
@@ -151,7 +173,7 @@ Reset the translation state completely. This clears both the translator state an
 **Response:**
 ```json
 {
-  "id": "3",
+  "id": "2",
   "result": {
     "status": "ok"
   }
@@ -159,6 +181,68 @@ Reset the translation state completely. This clears both the translator state an
 ```
 
 Use this when focus changes or when starting a new input context.
+
+### Engine State Management
+
+#### `set_starting_stroke_state`
+
+Set the starting stroke state that controls capitalization and space output.
+
+**Request:**
+```json
+{
+  "id": "3",
+  "method": "set_starting_stroke_state",
+  "params": {
+    "attach": false,
+    "capitalize": true,
+    "space_char": " "
+  }
+}
+```
+
+Parameters:
+- `attach` (boolean, optional): Whether to suppress initial space. Default: `true`
+- `capitalize` (boolean, optional): Whether to capitalize first word. Default: `false`
+- `space_char` (string, optional): Character to use for spaces. Default: `" "`
+
+**Response:**
+```json
+{
+  "id": "3",
+  "result": {
+    "status": "ok",
+    "attach": false,
+    "capitalize": true,
+    "space_char": " "
+  }
+}
+```
+
+#### `get_starting_stroke_state`
+
+Get the current starting stroke state.
+
+**Request:**
+```json
+{
+  "id": "4",
+  "method": "get_starting_stroke_state",
+  "params": {}
+}
+```
+
+**Response:**
+```json
+{
+  "id": "4",
+  "result": {
+    "attach": true,
+    "capitalize": false,
+    "space_char": " "
+  }
+}
+```
 
 ### Dictionary Management
 
@@ -169,7 +253,7 @@ Add a dictionary file to the engine.
 **Request:**
 ```json
 {
-  "id": "3",
+  "id": "5",
   "method": "add_dictionary",
   "params": {
     "path": "/path/to/dictionary.json"
@@ -180,7 +264,7 @@ Add a dictionary file to the engine.
 **Response:**
 ```json
 {
-  "id": "3",
+  "id": "5",
   "result": {
     "status": "ok",
     "path": "/path/to/dictionary.json",
@@ -196,7 +280,7 @@ Remove a dictionary from the engine.
 **Request:**
 ```json
 {
-  "id": "4",
+  "id": "6",
   "method": "remove_dictionary",
   "params": {
     "path": "/path/to/dictionary.json"
@@ -207,7 +291,7 @@ Remove a dictionary from the engine.
 **Response:**
 ```json
 {
-  "id": "4",
+  "id": "6",
   "result": {
     "status": "ok",
     "path": "/path/to/dictionary.json"
@@ -222,7 +306,7 @@ List all loaded dictionaries.
 **Request:**
 ```json
 {
-  "id": "5",
+  "id": "7",
   "method": "list_dictionaries",
   "params": {}
 }
@@ -231,7 +315,7 @@ List all loaded dictionaries.
 **Response:**
 ```json
 {
-  "id": "5",
+  "id": "7",
   "result": {
     "dictionaries": [
       {
@@ -252,7 +336,7 @@ Get all entries from a specific dictionary.
 **Request:**
 ```json
 {
-  "id": "6",
+  "id": "8",
   "method": "get_dictionary_entries",
   "params": {
     "path": "/path/to/dictionary.json"
@@ -263,7 +347,7 @@ Get all entries from a specific dictionary.
 **Response:**
 ```json
 {
-  "id": "6",
+  "id": "8",
   "result": {
     "path": "/path/to/dictionary.json",
     "entries": [
@@ -283,7 +367,7 @@ Add an entry to a dictionary.
 **Request:**
 ```json
 {
-  "id": "7",
+  "id": "9",
   "method": "add_entry",
   "params": {
     "stroke": "TEFT",
@@ -298,7 +382,7 @@ The `path` parameter is optional. If not specified, the entry is added to the fi
 **Response:**
 ```json
 {
-  "id": "7",
+  "id": "9",
   "result": {
     "status": "ok",
     "stroke": "TEFT",
@@ -314,7 +398,7 @@ Remove an entry from a dictionary.
 **Request:**
 ```json
 {
-  "id": "8",
+  "id": "10",
   "method": "remove_entry",
   "params": {
     "stroke": "TEFT",
@@ -328,7 +412,7 @@ The `path` parameter is optional. If not specified, the entry is removed from th
 **Response:**
 ```json
 {
-  "id": "8",
+  "id": "10",
   "result": {
     "status": "ok",
     "stroke": "TEFT"
@@ -343,7 +427,7 @@ Update an existing entry in a dictionary.
 **Request:**
 ```json
 {
-  "id": "9",
+  "id": "11",
   "method": "update_entry",
   "params": {
     "stroke": "TEFT",
@@ -358,7 +442,7 @@ The `path` parameter is optional. If not specified, the entry is updated in the 
 **Response:**
 ```json
 {
-  "id": "9",
+  "id": "11",
   "result": {
     "status": "ok",
     "stroke": "TEFT",
@@ -376,7 +460,7 @@ Look up a stroke in the dictionaries.
 **Request:**
 ```json
 {
-  "id": "10",
+  "id": "12",
   "method": "lookup",
   "params": {
     "stroke": "TEFT"
@@ -387,7 +471,7 @@ Look up a stroke in the dictionaries.
 **Response:**
 ```json
 {
-  "id": "10",
+  "id": "12",
   "result": {
     "stroke": "TEFT",
     "translation": "test"
@@ -404,7 +488,7 @@ Look up all strokes that produce a given translation.
 **Request:**
 ```json
 {
-  "id": "11",
+  "id": "13",
   "method": "reverse_lookup",
   "params": {
     "translation": "test"
@@ -415,7 +499,7 @@ Look up all strokes that produce a given translation.
 **Response:**
 ```json
 {
-  "id": "11",
+  "id": "13",
   "result": {
     "translation": "test",
     "strokes": ["TEFT", "TE*S"]
@@ -432,7 +516,7 @@ Stop the engine.
 **Request:**
 ```json
 {
-  "id": "12",
+  "id": "14",
   "method": "quit",
   "params": {}
 }
@@ -441,7 +525,7 @@ Stop the engine.
 **Response:**
 ```json
 {
-  "id": "12",
+  "id": "14",
   "result": {
     "status": "ok"
   }
@@ -456,34 +540,34 @@ $ python -m plover.stripped_plover
 {"id": "1", "method": "add_dictionary", "params": {"path": "main.json"}}
 {"id": "1", "result": {"status": "ok", "path": "main.json", "entries": 150000}}
 {"id": "2", "method": "translate", "params": {"stroke": "TEFT"}}
-{"id": "2", "result": {"preedit": "test", "key_combinations": []}}
+{"id": "2", "result": {"output": [{"type": "preedit", "text": "test"}]}}
 {"id": "3", "method": "translate", "params": {"stroke": "-G"}}
-{"id": "3", "result": {"preedit": "testing", "key_combinations": []}}
-{"id": "4", "method": "commit", "params": {}}
-{"id": "4", "result": {"committed": "testing"}}
-{"id": "5", "method": "translate", "params": {"stroke": "TEFT"}}
-{"id": "5", "result": {"preedit": "test", "key_combinations": []}}
-{"id": "6", "method": "reset_state", "params": {}}
-{"id": "6", "result": {"status": "ok"}}
-{"id": "7", "method": "quit", "params": {}}
-{"id": "7", "result": {"status": "ok"}}
+{"id": "3", "result": {"output": [{"type": "preedit", "text": "testing"}]}}
+{"id": "4", "method": "reset_state", "params": {}}
+{"id": "4", "result": {"status": "ok"}}
+{"id": "5", "method": "quit", "params": {}}
+{"id": "5", "result": {"status": "ok"}}
 ```
 
 ## IME Integration Notes
 
 When integrating with an IME:
 
-1. **Preedit Text**: The `preedit` field contains the complete current uncommitted text. On each `translate` response, replace the entire preedit buffer with this value.
+1. **Output Array**: The `output` array contains the complete state change from a stroke. Process elements in order.
 
-2. **No Backspaces**: This protocol does not use backspaces. The preedit is always provided as a complete string that replaces any previous preedit.
+2. **Committed Text**: When you receive a `{"type": "committed", "text": "..."}` element, insert this text permanently. It cannot be undone by stenographic strokes.
 
-3. **Commit**: Call the `commit` method when the user wants to finalize input (e.g., pressing space, Enter, or losing focus). This returns the committed text and clears the preedit.
+3. **Keypresses**: When you receive a `{"type": "keypress", "combo": "..."}` element, execute the key combination. This is used for shortcuts like Ctrl+C, Alt+Tab, etc.
 
-4. **Key Combinations**: Some translations include literal key presses (like `{#Control_L(c)}` for Ctrl+C). These are returned in the `key_combinations` array and should be executed by the IME.
+4. **Preedit Text**: When you receive a `{"type": "preedit", "text": "..."}` element, replace the entire current preedit/composing text with this value. This is uncommitted text that can be modified by subsequent strokes.
 
-5. **State Management**: Call `reset_state` when focus changes or when starting a new input context. This clears both the preedit and the translation state.
+5. **No External Commit**: There is no `commit` method. Commitment happens automatically when key combinations are encountered. The preedit is always the "working" text.
 
-6. **Undo**: The `*` stroke (asterisk) is the undo stroke in stenography. When processed, it will update the preedit to reflect the undone state.
+6. **State Management**: Call `reset_state` when focus changes or when starting a new input context. This clears the preedit and translation state, and resets to initial state (no leading space).
+
+7. **Engine State**: Use `set_starting_stroke_state` to control initial capitalization and space behavior. For example, set `capitalize: true` at the start of a sentence.
+
+8. **Undo**: The `*` stroke (asterisk) is the undo stroke in stenography. When processed, it will update the preedit to reflect the undone state.
 
 ## Steno Stroke Format
 
@@ -492,3 +576,19 @@ Strokes use the RTFCRE format (steno notation). Examples:
 - `HEL/HROE` - a multi-stroke outline (strokes separated by `/`)
 - `*` - asterisk (correction/undo key)
 - `-G` - right-hand key with explicit hyphen
+
+## Engine Commands in Translations
+
+Translations can include engine commands using the `{PLOVER:command}` syntax. Supported commands include:
+
+- `{PLOVER:SET_CONFIG:'option':value}` - Set engine configuration options
+  - `start_attached`: Whether to suppress spaces
+  - `start_capitalized`: Whether to capitalize
+  - `space_char`: Character to use for spaces
+
+Unsupported commands (these are no-ops):
+- `{PLOVER:TOGGLE}` - Does not make sense without keyboard capture
+- `{PLOVER:STOP}` - Does not make sense without keyboard capture
+- `{PLOVER:RESUME}` - Does not make sense without keyboard capture
+- `{PLOVER:SUSPEND}` - Does not make sense without keyboard capture
+- `{PLOVER:QUIT}` - Use the `quit` RPC method instead

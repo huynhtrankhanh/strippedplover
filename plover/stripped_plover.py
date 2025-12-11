@@ -8,16 +8,21 @@ This module implements the MANIFESTO.md requirements:
 4. STDIO-based JSON line protocol
 5. Dictionary management and stateful translation
 
-The output model uses preedit/commit semantics for IME integration:
-- preedit: Current uncommitted text that can be completely replaced
-- commit: Text that has been finalized
-- key_combinations: Literal key presses to execute
+The output model uses a structured array response for IME integration:
+- Translation responses contain an array of elements:
+  - {"type": "committed", "text": "..."} - Text that was finalized
+  - {"type": "keypress", "combo": "..."} - Literal key combination to execute
+  - {"type": "preedit", "text": "..."} - Current uncommitted text
+
+Key combinations force a commit of the previous preedit.
+Commitment is not an externally triggered event.
 """
 
 import json
 import sys
 import os
-from typing import Dict, List, Optional, Any
+from collections import namedtuple
+from typing import Dict, List, Optional, Any, Union
 
 # Core Plover imports
 from plover.steno import Stroke
@@ -28,25 +33,38 @@ from plover import system
 from plover.registry import registry
 
 
-class PreeditOutputHandler:
+# Engine state similar to Plover's StartingStrokeState
+# By default, attach=True to suppress initial space on start/reset
+StartingStrokeState = namedtuple(
+    "StartingStrokeState", "attach capitalize space_char", defaults=(True, False, " ")
+)
+
+
+class TranslationOutputHandler:
     """
-    Output handler that maintains preedit/commit state for IME integration.
+    Output handler that produces structured translation output for IME integration.
     
-    Instead of using backspaces, this handler tracks the full text state
-    and provides preedit (uncommitted) and commit (finalized) text.
+    This handler tracks the full text state and produces an array of elements:
+    - committed: Text that was finalized (before key combinations)
+    - keypress: Literal key combinations to execute
+    - preedit: Current uncommitted text
+    
+    Key combinations force a commit of any pending preedit text before the keypress.
     """
     
-    def __init__(self):
+    def __init__(self, engine: 'StrippedPlover'):
+        self._engine = engine
         self.reset_all()
     
     def reset_all(self):
-        """Reset all state."""
-        self._current_text = ""  # Full current text
-        self._key_combinations = []
+        """Reset all state to initial."""
+        self._current_text = ""  # Full current uncommitted text
+        self._output_elements = []  # Array of output elements
+        self._is_initial = True  # Whether we're at initial state (no space prefix)
     
     def reset_stroke_output(self):
         """Reset per-stroke output capture."""
-        self._key_combinations = []
+        self._output_elements = []
     
     def send_backspaces(self, count: int):
         """Handle backspaces by removing from current text."""
@@ -58,44 +76,87 @@ class PreeditOutputHandler:
         self._current_text += text
     
     def send_key_combination(self, combo: str):
-        """Record a key combination."""
-        self._key_combinations.append(combo)
+        """
+        Record a key combination.
+        
+        Key combinations force a commit of any pending preedit text,
+        then the keypress is recorded.
+        """
+        # Commit any pending preedit before the keypress
+        if self._current_text:
+            self._output_elements.append({
+                "type": "committed",
+                "text": self._current_text
+            })
+            self._current_text = ""
+            # After committing, we're no longer in initial state
+            self._is_initial = False
+        
+        # Record the keypress
+        self._output_elements.append({
+            "type": "keypress",
+            "combo": combo
+        })
     
     def send_engine_command(self, command: str):
-        """Handle engine commands (ignored in stripped version)."""
-        pass
+        """Handle engine commands."""
+        self._engine._handle_engine_command(command)
     
-    def get_preedit(self) -> str:
-        """Get the current preedit text."""
-        return self._current_text
+    def get_output_elements(self) -> List[Dict[str, Any]]:
+        """Get the structured output elements including current preedit."""
+        elements = list(self._output_elements)
+        
+        # Add current preedit as the final element if there is any
+        if self._current_text:
+            elements.append({
+                "type": "preedit",
+                "text": self._current_text
+            })
+        
+        return elements
     
-    def get_key_combinations(self) -> List[str]:
-        """Get key combinations from last stroke."""
-        return self._key_combinations
+    def is_initial(self) -> bool:
+        """Check if we're at initial state (no output yet)."""
+        return self._is_initial
     
-    def commit_all(self) -> str:
-        """Commit all current text and return it."""
-        committed = self._current_text
-        self._current_text = ""
-        return committed
+    def mark_not_initial(self):
+        """Mark that we've produced output (no longer initial)."""
+        self._is_initial = False
 
 
 class StrippedPlover:
     """
     Main stripped plover engine.
     
-    Provides stateful stenography translation with preedit/commit output
+    Provides stateful stenography translation with structured output
     suitable for IME integration.
+    
+    Engine state affects capitalization and space output:
+    - start_attached: Whether to suppress initial space
+    - start_capitalized: Whether to capitalize first word
+    - space_char: Character to use for spaces
+    
+    Engine commands are supported (except TOGGLE, STOP, RESUME which
+    don't make sense in this context).
     """
+    
+    # Commands that are not supported in stripped plover
+    UNSUPPORTED_COMMANDS = {'toggle', 'stop', 'resume', 'suspend', 'quit'}
     
     def __init__(self):
         self.dictionaries: StenoDictionaryCollection = StenoDictionaryCollection()
         self.translator: Translator = Translator()
         self.formatter: Formatter = Formatter()
-        self.output: PreeditOutputHandler = PreeditOutputHandler()
+        self.output: TranslationOutputHandler = TranslationOutputHandler(self)
+        
+        # Engine state - controls capitalization and space output
+        self._starting_stroke_state = StartingStrokeState()
         
         # Setup the system
         self._setup_system()
+        
+        # Apply initial engine state to formatter
+        self._apply_starting_stroke_state()
         
         # Connect translator to formatter
         self.translator.set_dictionary(self.dictionaries)
@@ -114,6 +175,79 @@ class StrippedPlover:
         registry.update()
         system.setup("English Stenotype")
     
+    def _apply_starting_stroke_state(self):
+        """Apply the starting stroke state to the formatter."""
+        self.formatter.start_attached = self._starting_stroke_state.attach
+        self.formatter.start_capitalized = self._starting_stroke_state.capitalize
+        self.formatter.space_char = self._starting_stroke_state.space_char
+    
+    @property
+    def starting_stroke_state(self) -> StartingStrokeState:
+        """Get the current starting stroke state."""
+        return self._starting_stroke_state
+    
+    @starting_stroke_state.setter
+    def starting_stroke_state(self, state: StartingStrokeState):
+        """Set the starting stroke state."""
+        self._starting_stroke_state = state
+        self._apply_starting_stroke_state()
+    
+    def _handle_engine_command(self, command: str):
+        """
+        Handle engine commands from translations.
+        
+        Supported commands:
+        - SUSPEND, RESUME, TOGGLE, QUIT: Not supported (no-op)
+        - SET_CONFIG: Modify engine configuration
+        - Other commands: Look up in registry and execute
+        """
+        command_name, *command_args = command.split(":", 1)
+        command_name = command_name.lower()
+        
+        # Skip unsupported commands
+        if command_name in self.UNSUPPORTED_COMMANDS:
+            return
+        
+        # Handle SET_CONFIG command
+        if command_name == "set_config":
+            if command_args:
+                self._handle_set_config(command_args[0])
+            return
+        
+        # Try to look up the command in the registry
+        try:
+            command_fn = registry.get_plugin("command", command_name).obj
+            command_fn(self, command_args[0] if command_args else "")
+        except KeyError:
+            # Unknown command, ignore
+            pass
+    
+    def _handle_set_config(self, cmdline: str):
+        """
+        Handle SET_CONFIG command.
+        
+        Supports setting:
+        - start_attached: bool
+        - start_capitalized: bool
+        - space_char: str
+        """
+        import ast
+        try:
+            opt_dict = ast.literal_eval("{" + cmdline + "}")
+            if not isinstance(opt_dict, dict):
+                return
+            
+            # Extract supported options
+            attach = opt_dict.get('start_attached', self._starting_stroke_state.attach)
+            capitalize = opt_dict.get('start_capitalized', self._starting_stroke_state.capitalize)
+            space_char = opt_dict.get('space_char', self._starting_stroke_state.space_char)
+            
+            # Update state
+            self.starting_stroke_state = StartingStrokeState(attach, capitalize, space_char)
+        except (SyntaxError, ValueError):
+            # Invalid syntax, ignore
+            pass
+    
     def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Handle a single JSON request and return a response."""
         request_id = request.get("id")
@@ -123,10 +257,12 @@ class StrippedPlover:
         try:
             if method == "translate":
                 result = self._translate(params)
-            elif method == "commit":
-                result = self._commit()
             elif method == "reset_state":
                 result = self._reset_state()
+            elif method == "set_starting_stroke_state":
+                result = self._set_starting_stroke_state(params)
+            elif method == "get_starting_stroke_state":
+                result = self._get_starting_stroke_state()
             elif method == "add_dictionary":
                 result = self._add_dictionary(params)
             elif method == "remove_dictionary":
@@ -166,9 +302,12 @@ class StrippedPlover:
         """
         Translate a stroke.
         
-        Returns the current preedit state after processing the stroke.
-        The preedit represents all uncommitted text that can be replaced
-        by subsequent strokes.
+        Returns an array of output elements:
+        - {"type": "committed", "text": "..."} - Text that was finalized
+        - {"type": "keypress", "combo": "..."} - Literal key combination to execute  
+        - {"type": "preedit", "text": "..."} - Current uncommitted text
+        
+        Key combinations force a commit of any pending preedit text.
         """
         stroke_str = params.get("stroke", "")
         
@@ -179,34 +318,58 @@ class StrippedPlover:
         stroke = Stroke.from_steno(stroke_str)
         self.translator.translate(stroke)
         
-        return {
-            "preedit": self.output.get_preedit(),
-            "key_combinations": self.output.get_key_combinations(),
-        }
-    
-    def _commit(self) -> Dict[str, Any]:
-        """
-        Commit the current preedit text.
+        # Mark that we're no longer at initial state if we produced output
+        elements = self.output.get_output_elements()
+        if elements:
+            self.output.mark_not_initial()
         
-        This finalizes the current preedit and clears it, returning
-        the committed text. The translation state is preserved for
-        multi-stroke translations.
-        """
-        committed = self.output.commit_all()
         return {
-            "committed": committed,
+            "output": elements,
         }
     
     def _reset_state(self) -> Dict[str, Any]:
         """
         Reset the translation state completely.
         
-        This clears both the translator state and the preedit buffer.
+        This clears the translator state, the preedit buffer, and resets
+        the engine to initial state (no initial space will be emitted).
         Use this when focus changes or starting a new input context.
         """
         self.translator.clear_state()
         self.output.reset_all()
+        # Re-apply starting stroke state to formatter
+        self._apply_starting_stroke_state()
         return {"status": "ok"}
+    
+    def _set_starting_stroke_state(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Set the starting stroke state.
+        
+        This controls:
+        - attach: Whether to suppress the initial space (default: False)
+        - capitalize: Whether to capitalize the first word (default: False)
+        - space_char: Character to use for spaces (default: " ")
+        """
+        attach = params.get("attach", self._starting_stroke_state.attach)
+        capitalize = params.get("capitalize", self._starting_stroke_state.capitalize)
+        space_char = params.get("space_char", self._starting_stroke_state.space_char)
+        
+        self.starting_stroke_state = StartingStrokeState(attach, capitalize, space_char)
+        
+        return {
+            "status": "ok",
+            "attach": self._starting_stroke_state.attach,
+            "capitalize": self._starting_stroke_state.capitalize,
+            "space_char": self._starting_stroke_state.space_char,
+        }
+    
+    def _get_starting_stroke_state(self) -> Dict[str, Any]:
+        """Get the current starting stroke state."""
+        return {
+            "attach": self._starting_stroke_state.attach,
+            "capitalize": self._starting_stroke_state.capitalize,
+            "space_char": self._starting_stroke_state.space_char,
+        }
     
     def _add_dictionary(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Add a dictionary."""
