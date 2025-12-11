@@ -8,7 +8,6 @@
 /node_modules/
 
 # Plover: when run in portable mode from source.
-/*.json
 /*.rtf
 /plover.cfg
 /plover.log
@@ -26,4 +25,3 @@ notes.md
 .DS_Store
 
 # vim: ft=cfg
-/package-lock.json
