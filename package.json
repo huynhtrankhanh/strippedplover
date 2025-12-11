@@ -1,0 +1,35 @@
+{
+  "name": "strippedplover",
+  "version": "1.0.0",
+  "description": "A minimal STDIO-based stenography translation engine for IME integration",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "bin": {
+    "stripped-plover": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "stenography",
+    "plover",
+    "steno",
+    "ime",
+    "translation"
+  ],
+  "author": "Open Steno Project",
+  "license": "GPL-2.0-or-later",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.5"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

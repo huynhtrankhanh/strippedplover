@@ -358,6 +358,76 @@ Get all entries from a specific dictionary.
 }
 ```
 
+#### `import_dictionary`
+
+Import dictionary entries from a protocol message. This creates a new in-memory dictionary or updates an existing one.
+
+**Request:**
+```json
+{
+  "id": "8",
+  "method": "import_dictionary",
+  "params": {
+    "path": "my-dictionary.json",
+    "data": {
+      "TEFT": "test",
+      "-G": "{^ing}",
+      "HEL/HROE": "hello"
+    },
+    "merge": false
+  }
+}
+```
+
+Parameters:
+- `path` (string, required): Identifier for the dictionary
+- `data` (object, required): Dictionary entries as stroke -> translation mapping
+- `merge` (boolean, optional): If true, merge with existing entries. If false (default), replace all entries.
+
+**Response:**
+```json
+{
+  "id": "8",
+  "result": {
+    "status": "ok",
+    "path": "my-dictionary.json",
+    "entries": 3
+  }
+}
+```
+
+#### `export_dictionary`
+
+Export all entries from a dictionary as a protocol message.
+
+**Request:**
+```json
+{
+  "id": "9",
+  "method": "export_dictionary",
+  "params": {
+    "path": "my-dictionary.json"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "id": "9",
+  "result": {
+    "status": "ok",
+    "path": "my-dictionary.json",
+    "format": "json",
+    "data": {
+      "TEFT": "test",
+      "-G": "{^ing}",
+      "HEL/HROE": "hello"
+    }
+  }
+}
+```
+
 ### Entry CRUD Operations
 
 #### `add_entry`

@@ -1,2 +1,0 @@
-plover-stroke
-rtf_tokenize

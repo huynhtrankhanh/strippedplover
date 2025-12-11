@@ -8,24 +8,30 @@ Stripped Plover is a streamlined version of [Plover](https://github.com/opensten
 
 - **No UI**: Runs as a headless translation engine
 - **No keyboard capture**: Receives strokes via STDIO, doesn't capture keyboard
-- **Minimal dependencies**: Only requires `plover-stroke` and `rtf_tokenize`
+- **No external dependencies**: Pure TypeScript/Node.js implementation
+- **SQLite-backed dictionaries**: Uses Node.js built-in SQLite for fast entry insertion and updates
 - **JSON line protocol**: Simple request/response protocol over STDIO
 - **Preedit/Commit model**: Output designed for IME integration
-- **Full dictionary support**: JSON and RTF dictionaries
+- **Import/Export**: Dictionary import/export via protocol messages
 - **Stateful translation**: Supports multi-stroke translations and undo
+
+## Requirements
+
+- Node.js 22.5.0 or later (uses built-in SQLite module)
 
 ## Installation
 
 ```bash
-pip install .
+npm install
+npm run build
 ```
 
 ## Usage
 
 ```bash
-stripped_plover
+npm start
 # or
-python -m plover
+node dist/index.js
 ```
 
 The engine reads JSON requests from stdin and writes JSON responses to stdout.
@@ -40,19 +46,30 @@ See [PROTOCOL.md](PROTOCOL.md) for complete protocol documentation.
 |--------|-------------|
 | `translate` | Translate a stroke, returns updated preedit |
 | `reset_state` | Reset translation state |
-| `add_dictionary` | Load a dictionary |
+| `add_dictionary` | Load a dictionary from file |
 | `remove_dictionary` | Unload a dictionary |
+| `import_dictionary` | Import dictionary entries from protocol message |
+| `export_dictionary` | Export dictionary entries to protocol message |
 | `lookup` | Look up a stroke |
 | `reverse_lookup` | Find strokes for a translation |
 | `quit` | Stop the engine |
 
+### Import/Export
+
+Dictionaries can be imported and exported via protocol messages:
+
+```json
+// Import a dictionary
+{"id": "1", "method": "import_dictionary", "params": {"path": "my.json", "data": {"TEFT": "test"}}}
+
+// Export a dictionary
+{"id": "2", "method": "export_dictionary", "params": {"path": "my.json"}}
+// Response includes: {"result": {"data": {"TEFT": "test"}, ...}}
+```
+
 ## MANIFESTO
 
 See [MANIFESTO.md](MANIFESTO.md) for the design principles behind Stripped Plover.
-
-## Testing
-
-See [TESTING_REPORT.md](TESTING_REPORT.md) for the comprehensive test results.
 
 ## License
 

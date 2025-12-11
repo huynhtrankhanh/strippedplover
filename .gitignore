@@ -1,13 +1,13 @@
 # Cache.
 /.cache/
 
-# Setuptools.
-/build/
+# Build artifacts
 /dist/
-/*.egg-info/
+
+# Dependencies
+/node_modules/
 
 # Plover: when run in portable mode from source.
-/*.json
 /*.rtf
 /plover.cfg
 /plover.log
@@ -18,24 +18,10 @@
 news_draft.md
 notes.md
 
-# Pytest.
-/.pytest_cache/
-
-# Python.
-__pycache__/
-
-# Tox.
-/.tox/
-
 # VSCode
 /.vscode/
 
 # macOS
 .DS_Store
-
-# Virtual environments
-/.venv/
-/venv/
-
 
 # vim: ft=cfg
