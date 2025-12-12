@@ -194,8 +194,12 @@ export class StrippedPlover {
 
   handleEngineCommand(command: string): void {
     const parts = command.split(':');
-    const commandName = (parts[0] ?? '').toLowerCase();
+    const commandName = parts[0].toLowerCase();
     const cmdline = parts.slice(1).join(':');
+
+    if (!commandName) {
+      return;
+    }
 
     if (StrippedPlover.UNSUPPORTED_COMMANDS.has(commandName)) {
       return;
@@ -213,8 +217,8 @@ export class StrippedPlover {
       } else if (commandName === 'end_solo_dict') {
         this.handleEndSoloDict();
       }
-    } catch {
-      // Ignore invalid engine commands
+    } catch (e) {
+      console.warn('Failed to handle engine command:', command, e);
     }
   }
 
@@ -281,18 +285,23 @@ export class StrippedPlover {
     const targetSuffix = `/${normalizedTarget}`;
 
     const matches: Array<{ index: number; length: number }> = [];
-    dicts.forEach((dict, index) => {
-      const normalizedPath = this.normalizeDictPath(dict.path);
-      const candidate = `/${normalizedPath}`;
+    const normalizedDicts = dicts.map((dict, index) => ({
+      index,
+      normalized: this.normalizeDictPath(dict.path),
+    }));
+
+    for (const { index, normalized } of normalizedDicts) {
+      const candidate = `/${normalized}`;
       if (candidate === targetSuffix || candidate.endsWith(targetSuffix)) {
-        matches.push({ index, length: normalizedPath.length });
+        matches.push({ index, length: normalized.length });
       }
-    });
+    }
 
     if (matches.length === 0) {
       throw new Error(`Dictionary not found: ${path}`);
     }
 
+    // Prefer the shortest matching path; if there is a tie, keep the earliest dictionary order.
     matches.sort((a, b) => (a.length === b.length ? a.index - b.index : a.length - b.length));
     return matches[0].index;
   }
@@ -311,9 +320,9 @@ export class StrippedPlover {
     const working = [...dicts];
     for (const spec of toggles) {
       const trimmed = spec.trim();
-      if (!trimmed) continue;
+      if (trimmed.length === 0) continue;
 
-      const action = trimmed[0];
+      const action = trimmed.charAt(0);
       const path = trimmed.slice(1).trim();
 
       if (!['+', '-', '!'].includes(action) || !path) {
@@ -355,23 +364,14 @@ export class StrippedPlover {
     this.dictionaries.setDicts(updated);
   }
 
-  private ensureSoloSnapshot(): void {
+  private handleSoloDict(toggles: string[]): void {
     if (!this.soloEnabled) {
       this.soloPreviousEnabled = new Map(this.dictionaries.dicts.map(d => [d.path, d.enabled]));
-      this.soloHasRun = true;
-    }
-  }
-
-  private handleSoloDict(toggles: string[]): void {
-    this.ensureSoloSnapshot();
-
-    if (!this.soloEnabled) {
-      const disabled = this.dictionaries.dicts.map(d => {
-        d.enabled = false;
-        return d;
-      });
-      this.dictionaries.setDicts(disabled);
+      for (const dict of this.dictionaries.dicts) {
+        dict.enabled = false;
+      }
       this.soloEnabled = true;
+      this.soloHasRun = true;
     }
 
     const updated = this.applyToggleSpecs(toggles);
@@ -379,15 +379,16 @@ export class StrippedPlover {
   }
 
   private handleEndSoloDict(): void {
-    if (!this.soloEnabled && !this.soloHasRun) {
+    if (!this.soloHasRun) {
       return;
     }
 
     if (this.soloPreviousEnabled.size > 0) {
       const restored = [...this.dictionaries.dicts];
       for (const dict of restored) {
-        if (this.soloPreviousEnabled.has(dict.path)) {
-          dict.enabled = Boolean(this.soloPreviousEnabled.get(dict.path));
+        const previous = this.soloPreviousEnabled.get(dict.path);
+        if (previous !== undefined) {
+          dict.enabled = previous;
         }
       }
       this.dictionaries.setDicts(restored);
@@ -551,18 +552,18 @@ export class StrippedPlover {
   }
 
   private prioritizeDictionariesRpc(params: Record<string, unknown>): Record<string, unknown> {
-    const paths = this.parseSelectionParam((params as any).paths ?? (params as any).path);
-    if (paths.length === 0) {
+    const { paths } = params as { paths?: unknown };
+    const parsed = this.parseSelectionParam(paths);
+    if (parsed.length === 0) {
       throw new Error('Dictionary paths are required');
     }
 
-    this.handlePriorityDict(paths);
+    this.handlePriorityDict(parsed);
     return { status: 'ok', dictionaries: this.describeDictionaries() };
   }
 
   private setDictionaryEnabled(params: Record<string, unknown>): Record<string, unknown> {
-    const path = (params as any).path as string;
-    const enabled = (params as any).enabled;
+    const { path, enabled } = params as { path?: string; enabled?: unknown };
 
     if (!path) {
       throw new Error('Dictionary path is required');
@@ -580,18 +581,20 @@ export class StrippedPlover {
   }
 
   private toggleDictionariesRpc(params: Record<string, unknown>): Record<string, unknown> {
-    const toggles = this.parseSelectionParam((params as any).toggles);
-    if (toggles.length === 0) {
+    const { toggles } = params as { toggles?: unknown };
+    const parsed = this.parseSelectionParam(toggles);
+    if (parsed.length === 0) {
       throw new Error('Dictionary toggles are required');
     }
 
-    this.handleToggleDict(toggles);
+    this.handleToggleDict(parsed);
     return { status: 'ok', dictionaries: this.describeDictionaries() };
   }
 
   private soloDictionariesRpc(params: Record<string, unknown>): Record<string, unknown> {
-    const toggles = this.parseSelectionParam((params as any).toggles);
-    this.handleSoloDict(toggles);
+    const { toggles } = params as { toggles?: unknown };
+    const parsed = this.parseSelectionParam(toggles);
+    this.handleSoloDict(parsed);
     return { status: 'ok', dictionaries: this.describeDictionaries(), solo: true };
   }
 
