@@ -299,6 +299,140 @@ Remove a dictionary from the engine.
 }
 ```
 
+#### `prioritize_dictionaries`
+
+Move one or more dictionaries to the top of the stack (first path ends up highest priority). Paths are matched by suffix, so `user.json` will match `/configs/user.json`.
+
+**Request:**
+```json
+{
+  "id": "6b",
+  "method": "prioritize_dictionaries",
+  "params": {
+    "paths": ["user.json", "commands.json"]
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "id": "6b",
+  "result": {
+    "status": "ok",
+    "dictionaries": [
+      {"path": "/configs/user.json", "enabled": true, "readonly": false, "entries": 0},
+      {"path": "/configs/commands.json", "enabled": true, "readonly": false, "entries": 0},
+      {"path": "/configs/main.json", "enabled": true, "readonly": false, "entries": 0}
+    ]
+  }
+}
+```
+
+#### `set_dictionary_enabled`
+
+Enable or disable a specific dictionary.
+
+**Request:**
+```json
+{
+  "id": "6c",
+  "method": "set_dictionary_enabled",
+  "params": {
+    "path": "user.json",
+    "enabled": false
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "id": "6c",
+  "result": {
+    "status": "ok",
+    "path": "user.json",
+    "enabled": false
+  }
+}
+```
+
+#### `toggle_dictionaries`
+
+Apply multiple enable/disable toggles at once using the same syntax as the Plover dict commands plugin:
+- `+path` — enable a dictionary
+- `-path` — disable a dictionary
+- `!path` — invert the current enabled state
+
+**Request:**
+```json
+{
+  "id": "6d",
+  "method": "toggle_dictionaries",
+  "params": {
+    "toggles": ["-main.json", "!commands.json"]
+  }
+}
+```
+
+#### `solo_dictionaries`
+
+Temporarily enter a "solo" dictionary mode. All dictionaries are disabled first, then the provided toggles are applied (same syntax as `toggle_dictionaries`). The previous enabled state is remembered so it can be restored.
+
+**Request:**
+```json
+{
+  "id": "6e",
+  "method": "solo_dictionaries",
+  "params": {
+    "toggles": ["+commands.json"]
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "id": "6e",
+  "result": {
+    "status": "ok",
+    "solo": true,
+    "dictionaries": [
+      {"path": "commands.json", "enabled": true, "readonly": false, "entries": 0},
+      {"path": "main.json", "enabled": false, "readonly": false, "entries": 0}
+    ]
+  }
+}
+```
+
+#### `end_solo_dictionaries`
+
+Restore the enabled/disabled state that was active before the first `solo_dictionaries` call.
+
+**Request:**
+```json
+{
+  "id": "6f",
+  "method": "end_solo_dictionaries",
+  "params": {}
+}
+```
+
+**Response:**
+```json
+{
+  "id": "6f",
+  "result": {
+    "status": "ok",
+    "solo": false,
+    "dictionaries": [
+      {"path": "commands.json", "enabled": true, "readonly": false, "entries": 0},
+      {"path": "main.json", "enabled": true, "readonly": false, "entries": 0}
+    ]
+  }
+}
+```
+
 #### `list_dictionaries`
 
 List all loaded dictionaries.
@@ -662,3 +796,14 @@ Unsupported commands (these are no-ops):
 - `{PLOVER:RESUME}` - Does not make sense without keyboard capture
 - `{PLOVER:SUSPEND}` - Does not make sense without keyboard capture
 - `{PLOVER:QUIT}` - Use the `quit` RPC method instead
+
+### Dictionary stack commands (Plover dict commands syntax)
+
+Stripped Plover implements the [plover_dict_commands](https://github.com/KoiOates/plover_dict_commands) feature set with the same syntax:
+
+- **`{PLOVER:PRIORITY_DICT:dict1.json,dict2.json}`** — Move the listed dictionaries to the top of the stack (first entry ends up highest priority).
+- **`{PLOVER:TOGGLE_DICT:+dict1.json,-dict2.json,!dict3.json}`** — Enable, disable, or invert individual dictionaries. The `+`, `-`, and `!` prefixes match the original plugin.
+- **`{PLOVER:SOLO_DICT:+dict1.json,...}`** — Enter a temporary mode where all dictionaries are disabled first, then the provided toggles are applied.
+- **`{PLOVER:END_SOLO_DICT}`** — Leave solo mode and restore the enabled/disabled state that existed before the first SOLO command.
+
+Paths are matched by suffix, so `user.json` will match `/some/path/user.json`.
