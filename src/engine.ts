@@ -135,6 +135,9 @@ export class StrippedPlover {
   private formatter: Formatter;
   private output: TranslationOutputHandler;
   private startingStrokeState: StartingStrokeState;
+  private soloEnabled: boolean;
+  private soloPreviousEnabled: Map<string, boolean>;
+  private soloHasRun: boolean;
 
   // Commands that are not supported
   private static UNSUPPORTED_COMMANDS = new Set(['toggle', 'stop', 'resume', 'suspend', 'quit']);
@@ -144,6 +147,10 @@ export class StrippedPlover {
     this.translator = new Translator();
     this.formatter = new Formatter();
     this.output = new TranslationOutputHandler(this);
+
+    this.soloEnabled = false;
+    this.soloPreviousEnabled = new Map();
+    this.soloHasRun = false;
 
     this.startingStrokeState = {
       attach: true,
@@ -186,15 +193,28 @@ export class StrippedPlover {
   }
 
   handleEngineCommand(command: string): void {
-    const parts = command.split(':', 2);
-    const commandName = parts[0].toLowerCase();
+    const parts = command.split(':');
+    const commandName = (parts[0] ?? '').toLowerCase();
+    const cmdline = parts.slice(1).join(':');
 
     if (StrippedPlover.UNSUPPORTED_COMMANDS.has(commandName)) {
       return;
     }
 
-    if (commandName === 'set_config' && parts[1]) {
-      this.handleSetConfig(parts[1]);
+    try {
+      if (commandName === 'set_config' && cmdline) {
+        this.handleSetConfig(cmdline);
+      } else if (commandName === 'priority_dict') {
+        this.handlePriorityDict(this.parseSelectionList(cmdline));
+      } else if (commandName === 'toggle_dict') {
+        this.handleToggleDict(this.parseSelectionList(cmdline));
+      } else if (commandName === 'solo_dict') {
+        this.handleSoloDict(this.parseSelectionList(cmdline));
+      } else if (commandName === 'end_solo_dict') {
+        this.handleEndSoloDict();
+      }
+    } catch {
+      // Ignore invalid engine commands
     }
   }
 
@@ -244,6 +264,150 @@ export class StrippedPlover {
     }
   }
 
+  private parseSelectionList(cmdline: string): string[] {
+    if (!cmdline) return [];
+    return cmdline
+      .split(',')
+      .map(p => p.trim())
+      .filter(p => p.length > 0);
+  }
+
+  private normalizeDictPath(p: string): string {
+    return p.replace(/\\/g, '/').replace(/\/+/g, '/');
+  }
+
+  private findDictionaryIndex(path: string, dicts: StenoDictionary[] = this.dictionaries.dicts): number {
+    const normalizedTarget = this.normalizeDictPath(path);
+    const targetSuffix = `/${normalizedTarget}`;
+
+    const matches: Array<{ index: number; length: number }> = [];
+    dicts.forEach((dict, index) => {
+      const normalizedPath = this.normalizeDictPath(dict.path);
+      const candidate = `/${normalizedPath}`;
+      if (candidate === targetSuffix || candidate.endsWith(targetSuffix)) {
+        matches.push({ index, length: normalizedPath.length });
+      }
+    });
+
+    if (matches.length === 0) {
+      throw new Error(`Dictionary not found: ${path}`);
+    }
+
+    matches.sort((a, b) => (a.length === b.length ? a.index - b.index : a.length - b.length));
+    return matches[0].index;
+  }
+
+  private reprioritize(paths: string[], dicts: StenoDictionary[] = this.dictionaries.dicts): StenoDictionary[] {
+    const working = [...dicts];
+    for (let i = paths.length - 1; i >= 0; i--) {
+      const idx = this.findDictionaryIndex(paths[i], working);
+      const [dict] = working.splice(idx, 1);
+      working.unshift(dict);
+    }
+    return working;
+  }
+
+  private applyToggleSpecs(toggles: string[], dicts: StenoDictionary[] = this.dictionaries.dicts): StenoDictionary[] {
+    const working = [...dicts];
+    for (const spec of toggles) {
+      const trimmed = spec.trim();
+      if (!trimmed) continue;
+
+      const action = trimmed[0];
+      const path = trimmed.slice(1).trim();
+
+      if (!['+', '-', '!'].includes(action) || !path) {
+        throw new Error(`Invalid dictionary toggle: ${spec}`);
+      }
+
+      const idx = this.findDictionaryIndex(path, working);
+      const dict = working[idx];
+
+      if (action === '+') {
+        dict.enabled = true;
+      } else if (action === '-') {
+        dict.enabled = false;
+      } else {
+        dict.enabled = !dict.enabled;
+      }
+    }
+    return working;
+  }
+
+  private describeDictionaries(): Array<{ path: string; enabled: boolean; readonly: boolean; entries: number }> {
+    return this.dictionaries.dicts.map(d => ({
+      path: d.path,
+      enabled: d.enabled,
+      readonly: d.readonly,
+      entries: d.length,
+    }));
+  }
+
+  private handlePriorityDict(paths: string[]): void {
+    if (paths.length === 0) return;
+    const updated = this.reprioritize(paths);
+    this.dictionaries.setDicts(updated);
+  }
+
+  private handleToggleDict(toggles: string[]): void {
+    if (toggles.length === 0) return;
+    const updated = this.applyToggleSpecs(toggles);
+    this.dictionaries.setDicts(updated);
+  }
+
+  private ensureSoloSnapshot(): void {
+    if (!this.soloEnabled) {
+      this.soloPreviousEnabled = new Map(this.dictionaries.dicts.map(d => [d.path, d.enabled]));
+      this.soloHasRun = true;
+    }
+  }
+
+  private handleSoloDict(toggles: string[]): void {
+    this.ensureSoloSnapshot();
+
+    if (!this.soloEnabled) {
+      const disabled = this.dictionaries.dicts.map(d => {
+        d.enabled = false;
+        return d;
+      });
+      this.dictionaries.setDicts(disabled);
+      this.soloEnabled = true;
+    }
+
+    const updated = this.applyToggleSpecs(toggles);
+    this.dictionaries.setDicts(updated);
+  }
+
+  private handleEndSoloDict(): void {
+    if (!this.soloEnabled && !this.soloHasRun) {
+      return;
+    }
+
+    if (this.soloPreviousEnabled.size > 0) {
+      const restored = [...this.dictionaries.dicts];
+      for (const dict of restored) {
+        if (this.soloPreviousEnabled.has(dict.path)) {
+          dict.enabled = Boolean(this.soloPreviousEnabled.get(dict.path));
+        }
+      }
+      this.dictionaries.setDicts(restored);
+    }
+
+    this.soloEnabled = false;
+    this.soloHasRun = false;
+    this.soloPreviousEnabled = new Map();
+  }
+
+  private parseSelectionParam(value: unknown): string[] {
+    if (Array.isArray(value)) {
+      return value.map(v => String(v).trim()).filter(Boolean);
+    }
+    if (typeof value === 'string') {
+      return this.parseSelectionList(value);
+    }
+    return [];
+  }
+
   handleRequest(request: ProtocolRequest): ProtocolResponse & { quit?: boolean } {
     const requestId = request.id;
     const method = request.method ?? '';
@@ -264,6 +428,21 @@ export class StrippedPlover {
           break;
         case 'get_starting_stroke_state':
           result = this.getStartingStrokeState();
+          break;
+        case 'prioritize_dictionaries':
+          result = this.prioritizeDictionariesRpc(params);
+          break;
+        case 'set_dictionary_enabled':
+          result = this.setDictionaryEnabled(params);
+          break;
+        case 'toggle_dictionaries':
+          result = this.toggleDictionariesRpc(params);
+          break;
+        case 'solo_dictionaries':
+          result = this.soloDictionariesRpc(params);
+          break;
+        case 'end_solo_dictionaries':
+          result = this.endSoloDictionariesRpc();
           break;
         case 'add_dictionary':
           result = this.addDictionary(params);
@@ -369,6 +548,56 @@ export class StrippedPlover {
       capitalize: this.startingStrokeState.capitalize,
       space_char: this.startingStrokeState.spaceChar,
     };
+  }
+
+  private prioritizeDictionariesRpc(params: Record<string, unknown>): Record<string, unknown> {
+    const paths = this.parseSelectionParam((params as any).paths ?? (params as any).path);
+    if (paths.length === 0) {
+      throw new Error('Dictionary paths are required');
+    }
+
+    this.handlePriorityDict(paths);
+    return { status: 'ok', dictionaries: this.describeDictionaries() };
+  }
+
+  private setDictionaryEnabled(params: Record<string, unknown>): Record<string, unknown> {
+    const path = (params as any).path as string;
+    const enabled = (params as any).enabled;
+
+    if (!path) {
+      throw new Error('Dictionary path is required');
+    }
+    if (typeof enabled !== 'boolean') {
+      throw new Error('Enabled flag must be a boolean');
+    }
+
+    const dicts = [...this.dictionaries.dicts];
+    const idx = this.findDictionaryIndex(path, dicts);
+    dicts[idx].enabled = enabled;
+    this.dictionaries.setDicts(dicts);
+
+    return { status: 'ok', path: dicts[idx].path, enabled };
+  }
+
+  private toggleDictionariesRpc(params: Record<string, unknown>): Record<string, unknown> {
+    const toggles = this.parseSelectionParam((params as any).toggles);
+    if (toggles.length === 0) {
+      throw new Error('Dictionary toggles are required');
+    }
+
+    this.handleToggleDict(toggles);
+    return { status: 'ok', dictionaries: this.describeDictionaries() };
+  }
+
+  private soloDictionariesRpc(params: Record<string, unknown>): Record<string, unknown> {
+    const toggles = this.parseSelectionParam((params as any).toggles);
+    this.handleSoloDict(toggles);
+    return { status: 'ok', dictionaries: this.describeDictionaries(), solo: true };
+  }
+
+  private endSoloDictionariesRpc(): Record<string, unknown> {
+    this.handleEndSoloDict();
+    return { status: 'ok', dictionaries: this.describeDictionaries(), solo: false };
   }
 
   private addDictionary(params: Record<string, unknown>): Record<string, unknown> {
@@ -538,14 +767,7 @@ export class StrippedPlover {
   }
 
   private listDictionaries(): Record<string, unknown> {
-    const dicts = this.dictionaries.dicts.map(d => ({
-      path: d.path,
-      enabled: d.enabled,
-      readonly: d.readonly,
-      entries: d.length,
-    }));
-
-    return { dictionaries: dicts };
+    return { dictionaries: this.describeDictionaries() };
   }
 
   private getDictionaryEntries(params: Record<string, unknown>): Record<string, unknown> {

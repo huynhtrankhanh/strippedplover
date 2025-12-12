@@ -14,6 +14,7 @@ Stripped Plover is a streamlined version of [Plover](https://github.com/opensten
 - **Preedit/Commit model**: Output designed for IME integration
 - **Import/Export**: Dictionary import/export via protocol messages
 - **Stateful translation**: Supports multi-stroke translations and undo
+- **Dictionary stack control**: RPCs and `{PLOVER:...}` commands (PRIORITY/TOGGLE/SOLO/END_SOLO) matching the `plover_dict_commands` syntax
 
 ## Requirements
 
@@ -48,6 +49,10 @@ See [PROTOCOL.md](PROTOCOL.md) for complete protocol documentation.
 | `reset_state` | Reset translation state |
 | `add_dictionary` | Load a dictionary from file |
 | `remove_dictionary` | Unload a dictionary |
+| `prioritize_dictionaries` | Move selected dictionaries to the top of the stack |
+| `set_dictionary_enabled` | Enable or disable a specific dictionary |
+| `toggle_dictionaries` | Apply multiple enable/disable toggles using `+`, `-`, `!` prefixes |
+| `solo_dictionaries` / `end_solo_dictionaries` | Enter/exit temporary solo mode for dictionaries |
 | `import_dictionary` | Import dictionary entries from protocol message |
 | `export_dictionary` | Export dictionary entries to protocol message |
 | `lookup` | Look up a stroke |
