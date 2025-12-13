@@ -67,7 +67,7 @@ describe('STDIO end-to-end', () => {
       const translateResp = JSON.parse(await waitForLine(lines));
       const preedit = translateResp.result?.output?.[0];
       expect(preedit?.type).toBe('preedit');
-      expect((preedit?.text as string)?.trim()).toBe('test');
+      expect(typeof preedit?.text === 'string' ? preedit.text.trim() : undefined).toBe('test');
 
       proc.stdin.write(
         JSON.stringify({ id: '3', method: 'export_dictionary', params: { path: dictPath } }) + '\n'

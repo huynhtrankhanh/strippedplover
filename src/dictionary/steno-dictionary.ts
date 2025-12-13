@@ -188,7 +188,7 @@ export class StenoDictionary implements StenoDictionaryLike {
       this.recalculateLongestKey();
     }
 
-    return (result.changes ?? 0) > 0;
+    return Number(result.changes ?? 0) > 0;
   }
 
   /**

@@ -113,9 +113,10 @@ def __safe_reverse_lookup(value):
         const trimmed = String(raw).trim().replace(/^'|'$/g, '');
         const parsed = JSON.parse(trimmed);
         if (Array.isArray(parsed)) {
-          this._entries = parsed
-            .filter(item => Array.isArray(item) && Array.isArray(item[0]) && typeof item[1] === 'string')
-            .map(([stroke, translation]: [string[], string]) => [stroke, translation]);
+          this._entries = parsed.filter(
+            (item): item is [string[], string] =>
+              Array.isArray(item) && Array.isArray(item[0]) && typeof item[1] === 'string'
+          );
           this._length = this._entries.length;
           if (this._entries.length > 0) {
             const maxLen = Math.max(...this._entries.map(([s]) => s.length));
