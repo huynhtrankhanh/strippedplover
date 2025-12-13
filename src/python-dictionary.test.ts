@@ -29,7 +29,7 @@ describe('PythonDictionary', () => {
     expect(() => dict.set(['TEST'], 'test')).toThrow('Python dictionaries are read-only');
     expect(() => dict.delete(['TEST'])).toThrow('Python dictionaries are read-only');
     expect(() => dict.clear()).toThrow('Python dictionaries are read-only');
-    expect(() => dict.update([['TEST', 'test']])).toThrow('Python dictionaries are read-only');
+    expect(() => dict.update([[['TEST'], 'test']])).toThrow('Python dictionaries are read-only');
   });
 
   it('returns empty items for enumeration', () => {

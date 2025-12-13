@@ -108,7 +108,7 @@ export class PythonDictionary implements BaseDictionary {
     } else if (this._path) {
       this._pythonCode = readFileSync(this._path, 'utf-8');
     } else {
-      throw new Error('No Python code provided and no path specified');
+      throw new Error('Python dictionary requires either source code or a file path to initialize');
     }
 
     // Execute the Python code in a sandboxed environment
