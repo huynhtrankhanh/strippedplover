@@ -305,9 +305,9 @@ export class Translator {
     this._state = new TranslatorState();
   }
 
-  translateStroke(stroke: Stroke): void {
+  async translateStroke(stroke: Stroke): Promise<void> {
     const maxLen = this._dictionary.longestKey;
-    const mapping = this.lookupWithPrefix(maxLen, this._state.translations, [stroke]);
+    const mapping = await this.lookupWithPrefix(maxLen, this._state.translations, [stroke]);
     const macro = mappingToMacro(mapping, stroke);
 
     if (macro !== null) {
@@ -317,11 +317,11 @@ export class Translator {
 
     const t =
       // No prefix lookups (note we avoid looking up [stroke] again).
-      this.findLongestMatch(2, maxLen, stroke) ||
+      await this.findLongestMatch(2, maxLen, stroke) ||
       // Return [stroke] result if mapped.
       (mapping !== null && new Translation([stroke], mapping)) ||
       // No direct match, try with suffixes.
-      this.findLongestMatch(1, maxLen, stroke, system.SUFFIX_KEYS) ||
+      await this.findLongestMatch(1, maxLen, stroke, system.SUFFIX_KEYS) ||
       // Fallback to untranslate.
       new Translation([stroke], null);
 
@@ -369,17 +369,17 @@ export class Translator {
     this._toDo += translations.length;
   }
 
-  private findLongestMatch(
+  private async findLongestMatch(
     minLen: number,
     maxLen: number,
     stroke: Stroke,
     suffixes: readonly string[] = []
-  ): Translation | null {
+  ): Promise<Translation | null> {
     let possibleSuffixes: Array<[Stroke, string]> = [];
 
     if (suffixes.length > 0) {
       // Implicit suffix lookup
-      possibleSuffixes = this.lookupInvolvedSuffixes(stroke, suffixes);
+      possibleSuffixes = await this.lookupInvolvedSuffixes(stroke, suffixes);
       if (possibleSuffixes.length === 0) {
         return null;
       }
@@ -413,7 +413,7 @@ export class Translator {
         continue;
       }
 
-      const mapping = this.lookupWithPrefix(
+      const mapping = await this.lookupWithPrefix(
         maxLen,
         translations.slice(0, i),
         strokes,
@@ -430,14 +430,14 @@ export class Translator {
     return null;
   }
 
-  private lookupStrokes(strokes: Stroke[]): string | null {
+  private async lookupStrokes(strokes: Stroke[]): Promise<string | null> {
     return this._dictionary.lookup(strokes.map(s => s.rtfcre));
   }
 
-  private lookupWithSuffix(
+  private async lookupWithSuffix(
     strokes: Stroke[],
     suffixes: Array<[Stroke, string]> = []
-  ): string | null {
+  ): Promise<string | null> {
     if (suffixes.length === 0) {
       return this.lookupStrokes(strokes);
     }
@@ -451,7 +451,7 @@ export class Translator {
         ...strokes.slice(0, -1),
         strokes[strokes.length - 1].subtract(suffixStroke),
       ];
-      const mainMapping = this.lookupStrokes(mainStrokes);
+      const mainMapping = await this.lookupStrokes(mainStrokes);
 
       if (mainMapping !== null) {
         return mainMapping + ' ' + suffixMapping;
@@ -461,10 +461,10 @@ export class Translator {
     return null;
   }
 
-  private lookupInvolvedSuffixes(
+  private async lookupInvolvedSuffixes(
     stroke: Stroke,
     suffixes: readonly string[]
-  ): Array<[Stroke, string]> {
+  ): Promise<Array<[Stroke, string]>> {
     const possibleSuffixes: Array<[Stroke, string]> = [];
 
     for (const suffix of suffixes) {
@@ -473,7 +473,7 @@ export class Translator {
         continue;
       }
 
-      const suffixMapping = this.lookupStrokes([suffixStroke]);
+      const suffixMapping = await this.lookupStrokes([suffixStroke]);
       if (suffixMapping === null) {
         continue;
       }
@@ -484,13 +484,13 @@ export class Translator {
     return possibleSuffixes;
   }
 
-  lookup(strokes: Stroke[], suffixes: readonly string[] = []): string | null {
-    const result = this.lookupStrokes(strokes);
+  async lookup(strokes: Stroke[], suffixes: readonly string[] = []): Promise<string | null> {
+    const result = await this.lookupStrokes(strokes);
     if (result !== null) {
       return result;
     }
 
-    const possibleSuffixes = this.lookupInvolvedSuffixes(
+    const possibleSuffixes = await this.lookupInvolvedSuffixes(
       strokes[strokes.length - 1],
       suffixes
     );
@@ -512,14 +512,14 @@ export class Translator {
     return formatting[formatting.length - 1].wordIsFinished;
   }
 
-  private lookupWithPrefix(
+  private async lookupWithPrefix(
     maxLen: number,
     lastTranslations: Translation[],
     strokes: Stroke[],
     suffixes: Array<[Stroke, string]> = []
-  ): string | null {
+  ): Promise<string | null> {
     if (strokes.length < maxLen && this.previousWordIsFinished(lastTranslations)) {
-      const mapping = this.lookupWithSuffix(
+      const mapping = await this.lookupWithSuffix(
         [Stroke.PREFIX_STROKE, ...strokes],
         suffixes
       );

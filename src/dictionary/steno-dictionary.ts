@@ -14,15 +14,15 @@ export interface StenoDictionaryLike {
   enabled: boolean;
   longestKey: number;
   length: number;
-  get(strokeTuple: string[]): string | null;
-  has(strokeTuple: string[]): boolean;
+  get(strokeTuple: string[]): string | null | Promise<string | null>;
+  has(strokeTuple: string[]): boolean | Promise<boolean>;
   set(strokeTuple: string[], translation: string): void;
   delete(strokeTuple: string[]): boolean;
   clear(): void;
   update(entries: Iterable<[string[], string]>): void;
   items(): Array<[string[], string]>;
   entries(): Generator<[string[], string]>;
-  reverseLookup(translation: string): Set<string[]>;
+  reverseLookup(translation: string): Set<string[]> | Promise<Set<string[]>>;
   caseReverseLookup(translation: string): Set<string>;
 }
 
@@ -346,22 +346,22 @@ export class StenoDictionaryCollection {
   /**
    * Lookup a stroke in all dictionaries (respecting priority)
    */
-  lookup(key: string[]): string | null {
+  async lookup(key: string[]): Promise<string | null> {
     return this._lookup(key, this._filters);
   }
 
   /**
    * Raw lookup without filters
    */
-  rawLookup(key: string[]): string | null {
+  async rawLookup(key: string[]): Promise<string | null> {
     return this._lookup(key, []);
   }
 
-  private _lookupKeepDeleted(
+  private async _lookupKeepDeleted(
     key: string[],
     dicts?: StenoDictionaryLike[],
     filters: Array<(key: string[], value: string) => boolean> = []
-  ): string | null {
+  ): Promise<string | null> {
     const searchDicts = dicts ?? this._dicts;
     const keyLen = key.length;
 
@@ -373,7 +373,7 @@ export class StenoDictionaryCollection {
       if (!d.enabled) continue;
       if (keyLen > d.longestKey) continue;
 
-      const value = d.get(key);
+      const value = await Promise.resolve(d.get(key));
       if (value !== null) {
         // Check filters
         if (!filters.some(f => f(key, value))) {
@@ -385,11 +385,11 @@ export class StenoDictionaryCollection {
     return null;
   }
 
-  private _lookup(
+  private async _lookup(
     key: string[],
     filters: Array<(key: string[], value: string) => boolean> = []
-  ): string | null {
-    const result = this._lookupKeepDeleted(key, undefined, filters);
+  ): Promise<string | null> {
+    const result = await this._lookupKeepDeleted(key, undefined, filters);
     if (result === null || result.toLowerCase() === '{plover:deleted}') {
       return null;
     }
@@ -399,7 +399,7 @@ export class StenoDictionaryCollection {
   /**
    * Reverse lookup - find all strokes that produce a translation
    */
-  reverseLookup(translation: string): Set<string[]> {
+  async reverseLookup(translation: string): Promise<Set<string[]>> {
     const keys = new Set<string>();
     const result: string[][] = [];
     
@@ -407,11 +407,12 @@ export class StenoDictionaryCollection {
       const d = this._dicts[n];
       if (!d.enabled) continue;
 
-      for (const key of d.reverseLookup(translation)) {
+      const reverseResults = await Promise.resolve(d.reverseLookup(translation));
+      for (const key of reverseResults) {
         const keyStr = key.join('/');
         // Ignore if overridden by higher priority dictionary
         if (keys.has(keyStr)) continue;
-        if (this._lookupKeepDeleted(key, this._dicts.slice(0, n)) !== null) continue;
+        if (await this._lookupKeepDeleted(key, this._dicts.slice(0, n)) !== null) continue;
         
         keys.add(keyStr);
         result.push(key);

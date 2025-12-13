@@ -1,23 +1,22 @@
 "use strict";
 /*
-SANDBOXED VERSION: All fork/exec operations are disabled to reduce attack surface.
-All fork-exec system calls throw an error or return -1.
+SANDBOXED VERSION: Fork/exec operations are no-ops to reduce attack surface.
+Subprocesses cannot be created but the operations don't fail.
 */
 Object.defineProperty(exports, "__esModule", { value: true });
-const util_1 = require("./util");
 function fork_exec(_context) {
-    // All fork/exec operations are blocked in sandbox mode
+    // Fork/exec operations are no-ops in sandbox mode
     return {
+        // Allow set_inheritable to succeed (no-op) - needed during Python init
         python_wasm_set_inheritable: () => {
-            (0, util_1.notImplemented)("fork/exec operations blocked in sandbox");
-            return -1;
+            return 0;
         },
+        // Fork/exec returns -1 (failure) but doesn't throw
         python_wasm_fork_exec: () => {
-            (0, util_1.notImplemented)("fork/exec operations blocked in sandbox");
             return -1;
         },
+        // vforkexec returns 127 (command not found) but doesn't throw
         cowasm_vforkexec: () => {
-            (0, util_1.notImplemented)("fork/exec operations blocked in sandbox");
             return 127;
         },
     };
