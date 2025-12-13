@@ -5,8 +5,25 @@
  * the Node.js built-in SQLite module for fast entry insertion and updates.
  */
 
-import { DatabaseSync } from 'node:sqlite';
 import { Stroke, normalizeSteno } from '../stroke.js';
+
+type DatabaseSyncInstance = {
+  exec(sql: string): void;
+  prepare(sql: string): {
+    get(...args: unknown[]): any;
+    all(...args: unknown[]): Array<any>;
+    run(...args: unknown[]): { changes?: number | bigint };
+  };
+  close(): void;
+};
+
+type DatabaseSyncCtor = (new (...args: any[]) => DatabaseSyncInstance) | null;
+let DatabaseSync: DatabaseSyncCtor = null;
+try {
+  ({ DatabaseSync } = await import('node:sqlite'));
+} catch {
+  DatabaseSync = null;
+}
 
 export interface StenoDictionaryLike {
   path: string;
@@ -36,7 +53,7 @@ export interface StenoDictionaryOptions {
  * A steno dictionary backed by SQLite
  */
 export class StenoDictionary implements StenoDictionaryLike {
-  private db: DatabaseSync;
+  private db: DatabaseSyncInstance;
   private _path: string;
   private _readonly: boolean;
   private _enabled: boolean;
@@ -44,6 +61,9 @@ export class StenoDictionary implements StenoDictionaryLike {
   private _longestKey: number;
 
   constructor(options: StenoDictionaryOptions = {}) {
+    if (!DatabaseSync) {
+      throw new Error('node:sqlite built-in module is required to use StenoDictionary');
+    }
     this._path = options.path ?? ':memory:';
     this._readonly = options.readonly ?? false;
     this._enabled = options.enabled ?? true;
@@ -168,7 +188,7 @@ export class StenoDictionary implements StenoDictionaryLike {
       this.recalculateLongestKey();
     }
 
-    return result.changes > 0;
+    return Number(result.changes ?? 0) > 0;
   }
 
   /**

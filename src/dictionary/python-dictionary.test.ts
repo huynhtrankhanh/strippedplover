@@ -237,4 +237,29 @@ def lookup(key):
 
     dict.terminate();
   }, 30000);
+
+  it('enumerates DICTIONARY entries for export', async () => {
+    const file = createTempPythonDict(`
+LONGEST_KEY = 2
+
+DICTIONARY = {
+    ('TEFT',): 'test',
+    ('HEL', 'HROE'): 'hello',
+}
+
+def lookup(key):
+    if key in DICTIONARY:
+        return DICTIONARY[key]
+    raise KeyError(key)
+`);
+
+    const dict = await PythonDictionary.load(file);
+
+    expect(dict.length).toBe(2);
+    const items = dict.items();
+    expect(items).toContainEqual([['TEFT'], 'test']);
+    expect(items).toContainEqual([['HEL', 'HROE'], 'hello']);
+
+    dict.terminate();
+  }, 30000);
 });

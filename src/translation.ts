@@ -224,8 +224,8 @@ export class Translator {
     this._dictionary = new StenoDictionaryCollection();
   }
 
-  translate(stroke: Stroke): void {
-    this.translateStroke(stroke);
+  async translate(stroke: Stroke): Promise<void> {
+    await this.translateStroke(stroke);
     this.flush();
   }
 
@@ -311,7 +311,7 @@ export class Translator {
     const macro = mappingToMacro(mapping, stroke);
 
     if (macro !== null) {
-      this.translateMacro(macro);
+      await this.translateMacro(macro);
       return;
     }
 
@@ -328,11 +328,12 @@ export class Translator {
     this.translateTranslation(t);
   }
 
-  translateMacro(macro: Macro): void {
+  async translateMacro(macro: Macro): Promise<void> {
     try {
       const macroFn = registry.getPlugin<(translator: Translator, stroke: Stroke, cmdline: string) => void>('macro', macro.name);
       if (macroFn) {
-        macroFn(this, macro.stroke, macro.cmdline);
+        const maybePromise = macroFn(this, macro.stroke, macro.cmdline);
+        await Promise.resolve(maybePromise);
       }
     } catch {
       // Unknown macro, ignore
