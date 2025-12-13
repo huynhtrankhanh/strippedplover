@@ -18,6 +18,8 @@ Stripped Plover uses a simple JSON line protocol for communication over STDIO. E
 - `method`: The method to invoke.
 - `params`: Method-specific parameters (optional for some methods).
 
+The `id` can be a string or number. If the JSON cannot be parsed, the server responds with `id: null` because it cannot echo the original identifier.
+
 ### Response Format
 
 **Success Response:**
@@ -46,6 +48,8 @@ Stripped Plover uses a simple JSON line protocol for communication over STDIO. E
 | -32700 | Parse error (invalid JSON) |
 | -32601 | Unknown method |
 | -32000 | General error |
+
+Parameter validation failures (missing fields, unknown dictionaries, read-only mutations, etc.) use the general error code.
 
 ## Startup
 
@@ -246,6 +250,8 @@ Get the current starting stroke state.
 
 ### Dictionary Management
 
+Dictionary path matching is suffix-based for prioritization and enable/disable operations (`prioritize_dictionaries`, `set_dictionary_enabled`, `toggle_dictionaries`, `solo_dictionaries`, `end_solo_dictionaries`). For example, `user.json` will match `/configs/user.json`. Loading and removing dictionaries (`add_dictionary`, `remove_dictionary`) operate on the exact path you provide.
+
 #### `add_dictionary`
 
 Add a dictionary file to the engine.
@@ -272,6 +278,8 @@ Add a dictionary file to the engine.
   }
 }
 ```
+
+Supported formats are `.json` and `.py` (Plover-compatible Python dictionaries are loaded read-only).
 
 #### `remove_dictionary`
 
@@ -371,6 +379,20 @@ Apply multiple enable/disable toggles at once using the same syntax as the Plove
   "method": "toggle_dictionaries",
   "params": {
     "toggles": ["-main.json", "!commands.json"]
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "id": "6d",
+  "result": {
+    "status": "ok",
+    "dictionaries": [
+      {"path": "commands.json", "enabled": false, "readonly": false, "entries": 0},
+      {"path": "main.json", "enabled": false, "readonly": false, "entries": 0}
+    ]
   }
 }
 ```
@@ -529,6 +551,10 @@ Parameters:
   }
 }
 ```
+
+Importing automatically loads the dictionary into the active stack.
+- For `.py` paths the engine rebuilds the on-disk Python file, reloads it into the sandbox, and keeps Python dictionaries read-only at runtime.
+- If `merge` is `true`, existing entries are combined with the incoming data before being written.
 
 #### `export_dictionary`
 
