@@ -25,7 +25,15 @@
   "author": "Open Steno Project",
   "license": "GPL-2.0-or-later",
   "dependencies": {
-    "python-wasm": "^0.28.1"
+    "awaiting": "^3.0.0",
+    "date-format": "^4.0.13",
+    "debug": "^4.3.4",
+    "dylink": "^0.13.0",
+    "lodash": "^4.17.21",
+    "posix-node": "^0.12.0",
+    "python-wasm": "^0.28.1",
+    "uuid": "^8.3.2",
+    "wasi-js": "^1.7.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

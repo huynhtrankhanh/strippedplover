@@ -1,103 +1,240 @@
-import { describe, expect, it, vi } from 'vitest';
-import { writeFileSync } from 'node:fs';
+import { describe, expect, it, afterAll } from 'vitest';
+import { writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { PythonDictionary } from './python-dictionary.js';
 
-vi.mock('node:sqlite', () => {
-  class Statement {
-    get() {
-      return { count: 0 };
-    }
-    all() {
-      return [];
-    }
-    run() {
-      return { changes: 0 };
-    }
-  }
-  class FakeDatabase {
-    exec(): void {}
-    prepare(): Statement {
-      return new Statement();
-    }
-    close(): void {}
-  }
-  return { DatabaseSync: FakeDatabase };
-});
+/**
+ * Tests for Python dictionary loader using the plover-python-dictionary format.
+ * 
+ * The plover-python-dictionary format requires:
+ * - LONGEST_KEY: int - Maximum number of strokes
+ * - lookup(key: tuple) -> str - Returns translation or raises KeyError
+ * - reverse_lookup(value: str) -> list - Optional, returns stroke tuples
+ */
+describe('python dictionary loader (plover-python-dictionary format)', () => {
+  const tempFiles: string[] = [];
 
-vi.mock('python-wasm', () => {
-  const state = {
-    longestKey: 0,
-    entries: new Map<string, string>(),
-  };
-
-  function parsePythonDict(code: string) {
-    const lk = code.match(/LONGEST_KEY\s*=\s*(\d+)/);
-    if (lk) {
-      state.longestKey = Number.parseInt(lk[1], 10);
-    }
-    const entriesMatch = code.match(/ENTRIES\s*=\s*\{([^}]*)\}/s);
-    if (entriesMatch) {
-      const body = entriesMatch[1];
-      const pairRe = /\(\s*'([^']+)'\s*,?\s*\)\s*:\s*'([^']+)'/g;
-      let m: RegExpExecArray | null;
-      while ((m = pairRe.exec(body)) !== null) {
-        state.entries.set(m[1], m[2]);
-      }
-    }
-  }
-
-  const stub = {
-    async exec(code: string) {
-      if (code.includes('LONGEST_KEY') && code.includes('ENTRIES')) {
-        parsePythonDict(code);
-        return '';
-      }
-      return '';
-    },
-    async repr(expr: string) {
-      if (expr.includes('int(LONGEST_KEY')) {
-        return String(state.longestKey);
-      }
-      if (expr.includes('__sp_collect_entries')) {
-        const arr: Array<[string[], string]> = [];
-        for (const [k, v] of state.entries.entries()) {
-          arr.push([[k], v]);
+  // Clean up temp files after tests
+  afterAll(() => {
+    for (const file of tempFiles) {
+      if (existsSync(file)) {
+        try {
+          unlinkSync(file);
+        } catch {
+          // ignore cleanup errors
         }
-        return JSON.stringify(arr);
       }
-      return '';
-    },
-  };
+    }
+  });
 
-  return {
-    __esModule: true,
-    async asyncPython() {
-      return stub;
-    },
-  };
-}, { virtual: true });
-
-import { loadDictionary } from './loader.js';
-
-describe('python dictionary loader (wasm sandbox)', () => {
-  it('loads entries and enforces read-only operations', async () => {
+  function createTempPythonDict(content: string): string {
     const dir = tmpdir();
-    const file = path.join(dir, `dict-${Date.now()}.py`);
-    writeFileSync(
-      file,
-      [
-        'LONGEST_KEY = 1',
-        "ENTRIES = {('TEFT',): 'test'}",
-      ].join('\n'),
-      'utf-8'
-    );
+    const file = path.join(dir, `dict-${Date.now()}-${Math.random().toString(36).slice(2)}.py`);
+    writeFileSync(file, content, 'utf-8');
+    tempFiles.push(file);
+    return file;
+  }
 
-    const dict = await loadDictionary(file);
-    expect(dict.length).toBe(1);
-    expect(dict.get(['TEFT'])).toBe('test');
+  it('loads a simple dictionary with lookup function', async () => {
+    const file = createTempPythonDict(`
+LONGEST_KEY = 1
+
+DICTIONARY = {
+    ('TEFT',): 'test',
+    ('HELO',): 'hello',
+}
+
+def lookup(key):
+    if key in DICTIONARY:
+        return DICTIONARY[key]
+    raise KeyError(key)
+
+def reverse_lookup(value):
+    return [k for k, v in DICTIONARY.items() if v == value]
+`);
+
+    const dict = await PythonDictionary.load(file);
     expect(dict.longestKey).toBe(1);
-    expect(() => dict.set(['A'], 'b')).toThrow();
-    expect(() => dict.delete(['A'])).toThrow();
-  }, 15000);
+    
+    // Test async lookups
+    expect(await dict.get(['TEFT'])).toBe('test');
+    expect(await dict.get(['HELO'])).toBe('hello');
+    expect(await dict.get(['NONEXISTENT'])).toBeNull();
+    
+    dict.terminate();
+  }, 30000);
+
+  it('loads dictionary with multi-stroke entries', async () => {
+    const file = createTempPythonDict(`
+LONGEST_KEY = 3
+
+DICTIONARY = {
+    ('TEFT',): 'test',
+    ('TEFT', 'TEFT'): 'test test',
+    ('KAT', 'AS', 'TROEF'): 'catastrophe',
+}
+
+def lookup(key):
+    if key in DICTIONARY:
+        return DICTIONARY[key]
+    raise KeyError(key)
+`);
+
+    const dict = await PythonDictionary.load(file);
+    expect(dict.longestKey).toBe(3);
+    
+    expect(await dict.get(['TEFT'])).toBe('test');
+    expect(await dict.get(['TEFT', 'TEFT'])).toBe('test test');
+    expect(await dict.get(['KAT', 'AS', 'TROEF'])).toBe('catastrophe');
+    
+    // Key longer than LONGEST_KEY should return null
+    expect(await dict.get(['A', 'B', 'C', 'D'])).toBeNull();
+    
+    dict.terminate();
+  }, 30000);
+
+  it('maintains isolated state between dictionary instances', async () => {
+    const file1 = createTempPythonDict(`
+LONGEST_KEY = 1
+
+DICTIONARY = {('FIRST',): 'first dictionary'}
+
+def lookup(key):
+    if key in DICTIONARY:
+        return DICTIONARY[key]
+    raise KeyError(key)
+`);
+
+    const file2 = createTempPythonDict(`
+LONGEST_KEY = 2
+
+DICTIONARY = {
+    ('SECOND',): 'second dictionary',
+    ('TWO', 'STROKES'): 'two strokes'
+}
+
+def lookup(key):
+    if key in DICTIONARY:
+        return DICTIONARY[key]
+    raise KeyError(key)
+`);
+
+    const dict1 = await PythonDictionary.load(file1);
+    const dict2 = await PythonDictionary.load(file2);
+
+    // Verify independent state
+    expect(dict1.longestKey).toBe(1);
+    expect(dict2.longestKey).toBe(2);
+
+    // Verify entries are isolated
+    expect(await dict1.get(['FIRST'])).toBe('first dictionary');
+    expect(await dict1.get(['SECOND'])).toBeNull();
+
+    expect(await dict2.get(['SECOND'])).toBe('second dictionary');
+    expect(await dict2.get(['TWO', 'STROKES'])).toBe('two strokes');
+    expect(await dict2.get(['FIRST'])).toBeNull();
+
+    dict1.terminate();
+    dict2.terminate();
+  }, 60000);
+
+  it('performs reverse lookup correctly', async () => {
+    const file = createTempPythonDict(`
+LONGEST_KEY = 2
+
+DICTIONARY = {
+    ('TEFT',): 'test',
+    ('TEFT', 'TEFT'): 'test',
+    ('OTHER',): 'other',
+}
+
+def lookup(key):
+    if key in DICTIONARY:
+        return DICTIONARY[key]
+    raise KeyError(key)
+
+def reverse_lookup(value):
+    return [k for k, v in DICTIONARY.items() if v == value]
+`);
+
+    const dict = await PythonDictionary.load(file);
+    
+    // Reverse lookup for 'test' should return both stroke sequences
+    const testResults = await dict.reverseLookup('test');
+    expect(testResults.size).toBe(2);
+    
+    // Reverse lookup for 'other' should return one result
+    const otherResults = await dict.reverseLookup('other');
+    expect(otherResults.size).toBe(1);
+    
+    // Reverse lookup for non-existent translation
+    const noResults = await dict.reverseLookup('nonexistent');
+    expect(noResults.size).toBe(0);
+
+    dict.terminate();
+  }, 30000);
+
+  it('throws appropriate errors for mutating operations', async () => {
+    const file = createTempPythonDict(`
+LONGEST_KEY = 1
+
+def lookup(key):
+    if key == ('TEFT',):
+        return 'test'
+    raise KeyError(key)
+`);
+
+    const dict = await PythonDictionary.load(file);
+    
+    expect(() => dict.set(['NEW'], 'value')).toThrow('read-only');
+    expect(() => dict.delete(['TEFT'])).toThrow('read-only');
+    expect(() => dict.clear()).toThrow('read-only');
+    expect(() => dict.update([[['NEW'], 'value']])).toThrow('read-only');
+
+    dict.terminate();
+  }, 30000);
+
+  it('validates LONGEST_KEY is required', async () => {
+    const file = createTempPythonDict(`
+def lookup(key):
+    return 'test'
+`);
+
+    await expect(PythonDictionary.load(file)).rejects.toThrow('LONGEST_KEY');
+  }, 30000);
+
+  it('validates lookup function is required', async () => {
+    const file = createTempPythonDict(`
+LONGEST_KEY = 1
+# No lookup function defined
+`);
+
+    await expect(PythonDictionary.load(file)).rejects.toThrow('lookup');
+  }, 30000);
+
+  it('handles has correctly', async () => {
+    const file = createTempPythonDict(`
+LONGEST_KEY = 2
+
+DICTIONARY = {
+    ('EXISTS',): 'yes',
+    ('MULTI', 'STROKE'): 'also yes',
+}
+
+def lookup(key):
+    if key in DICTIONARY:
+        return DICTIONARY[key]
+    raise KeyError(key)
+`);
+
+    const dict = await PythonDictionary.load(file);
+    
+    expect(await dict.has(['EXISTS'])).toBe(true);
+    expect(await dict.has(['MULTI', 'STROKE'])).toBe(true);
+    expect(await dict.has(['DOES_NOT_EXIST'])).toBe(false);
+    expect(await dict.has(['MULTI'])).toBe(false);
+
+    dict.terminate();
+  }, 30000);
 });

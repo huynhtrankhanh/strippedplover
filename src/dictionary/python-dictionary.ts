@@ -1,22 +1,27 @@
 import { readFileSync } from 'node:fs';
 import { StenoDictionaryLike } from './steno-dictionary.js';
-import { asyncPython, PythonWasmAsync } from 'python-wasm';
+// Use vendored python-wasm with sandboxed POSIX operations
+import { asyncPython, PythonWasmAsync } from '../../vendor/python-wasm/dist/node.js';
 
 type PythonRuntime = PythonWasmAsync;
 
-function ensureArray(value: unknown): string[] | null {
-  if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
-    return value as string[];
-  }
-  return null;
-}
-
+/**
+ * Python Dictionary implementation compatible with plover-python-dictionary format.
+ * 
+ * The plover-python-dictionary format expects:
+ * - LONGEST_KEY: int - Maximum number of strokes in any entry
+ * - lookup(key: tuple[str, ...]) -> str - Function that returns translation or raises KeyError
+ * - reverse_lookup(value: str) -> list[tuple[str, ...]] - Optional function for reverse lookup
+ * 
+ * We use asyncPython for non-blocking lookups.
+ */
 export class PythonDictionary implements StenoDictionaryLike {
-  private entriesMap: Map<string, string> = new Map();
   private _path: string;
+  private _py: PythonRuntime | null = null;
+  private _longestKey = 0;
+  private _hasReverseLookup = false;
   readonly = true;
   enabled: boolean;
-  private _longestKey = 0;
 
   private constructor(path: string, enabled = true) {
     this._path = path;
@@ -30,40 +35,56 @@ export class PythonDictionary implements StenoDictionaryLike {
   }
 
   private async loadFromPython(path: string): Promise<void> {
-    // Use python-wasm (CPython) in bundle mode; no native host FS/JS bridge.
+    // Use python-wasm (CPython) with full filesystem for proper stdlib support
     const py: PythonRuntime = await asyncPython({
-      fs: 'bundle',
-      noReadline: true,
-      noStdio: true,
+      fs: 'everything',
     });
+
+    // Set up sandboxing to block dangerous modules and add helper functions
     await py.exec(
       [
-        'import sys, builtins, importlib',
+        'import sys, builtins',
         'class __SpBlocker:',
         "    def find_spec(self, fullname, path=None, target=None):",
         "        if fullname in ('js', '_js') or fullname.startswith('js.'):",
         "            raise ImportError('js disabled')",
-        "        if fullname in ('os', 'subprocess'):",
+        "        if fullname in ('subprocess', 'socket', 'http', 'urllib', 'ftplib', 'smtplib', 'telnetlib'):",
         "            raise ImportError('restricted module')",
         "        return None",
         'sys.meta_path.insert(0, __SpBlocker())',
-        'def __sp_blocked(*args, **kwargs):',
-        "    raise RuntimeError('unsupported in sandbox')",
-        'builtins.open = __sp_blocked',
-        'for mod in ("js","_js","os","subprocess"):',
+        'for mod in ("js","_js","subprocess","socket"):',
         '    sys.modules.pop(mod, None)',
-        'try:',
-        '    import js',
-        '    raise RuntimeError("js module should not be available")',
-        'except Exception:',
-        '    pass',
       ].join('\n')
     );
 
+    // Load the dictionary module content
     const content = readFileSync(path, 'utf-8');
     await py.exec(content);
 
-    // Collect longest key
+    // Add safe lookup helper function
+    await py.exec(`
+def __safe_lookup(key):
+    try:
+        return lookup(key)
+    except KeyError:
+        return None
+    except Exception:
+        return None
+
+def __safe_reverse_lookup(value):
+    try:
+        if 'reverse_lookup' in globals():
+            return list(reverse_lookup(value))
+        return []
+    except Exception:
+        return []
+`);
+
+    // Validate LONGEST_KEY exists and is valid
+    const hasLongestKey = await py.repr("'LONGEST_KEY' in dir()");
+    if (hasLongestKey.trim() !== 'True') {
+      throw new Error('Invalid or missing LONGEST_KEY in python dictionary');
+    }
     const longestRaw = await py.repr('int(LONGEST_KEY)');
     const pythonLongest = Number.parseInt(String(longestRaw).replace(/[^0-9-]/g, ''), 10);
     if (!Number.isFinite(pythonLongest) || pythonLongest <= 0) {
@@ -71,56 +92,18 @@ export class PythonDictionary implements StenoDictionaryLike {
     }
     this._longestKey = pythonLongest;
 
-    // Collect entries (best-effort) into JSON for synchronous lookup
-    const entriesRaw = await py.repr(`
-import json
-def __sp_collect_entries():
-    merged = {}
-    for name in ('ENTRIES', 'DICTIONARY', 'dictionary', 'DICT'):
-        obj = globals().get(name)
-        if isinstance(obj, dict):
-            try:
-                merged.update(obj)
-            except Exception:
-                pass
-    if not merged and 'entries' in globals() and callable(entries):
-        try:
-            for k, v in entries():
-                merged[k] = v
-        except Exception:
-            pass
-    result = []
-    for k, v in merged.items():
-        try:
-            result.append([list(k), v])
-        except Exception:
-            pass
-    return json.dumps(result)
-__sp_collect_entries()
-`);
-
-    let parsed: unknown = [];
-    try {
-      parsed = JSON.parse(String(entriesRaw));
-    } catch {
-      parsed = [];
+    // Validate lookup function exists
+    const hasLookup = await py.repr('callable(lookup) if "lookup" in dir() else False');
+    if (hasLookup.trim() !== 'True') {
+      throw new Error('Missing or invalid `lookup` function in python dictionary');
     }
 
-    if (!Array.isArray(parsed)) {
-      parsed = [];
-    }
+    // Check if reverse_lookup function exists
+    const hasReverse = await py.repr('callable(reverse_lookup) if "reverse_lookup" in dir() else False');
+    this._hasReverseLookup = hasReverse.trim() === 'True';
 
-    for (const entry of parsed as unknown[]) {
-      if (!Array.isArray(entry) || entry.length !== 2) continue;
-      const key = ensureArray(entry[0]);
-      const value = entry[1];
-      if (!key || typeof value !== 'string') continue;
-      const normalizedKey = key.join('/');
-      this.entriesMap.set(normalizedKey, value);
-      if (key.length > this._longestKey) {
-        this._longestKey = key.length;
-      }
-    }
+    // Keep the Python runtime alive for lookups
+    this._py = py;
   }
 
   get path(): string {
@@ -135,17 +118,52 @@ __sp_collect_entries()
     return this._longestKey;
   }
 
+  /**
+   * For Python dictionaries with dynamic lookup, we don't know the length.
+   * Return -1 to indicate unknown size.
+   */
   get length(): number {
-    return this.entriesMap.size;
+    return -1;
   }
 
-  get(strokeTuple: string[]): string | null {
-    const key = strokeTuple.join('/');
-    return this.entriesMap.get(key) ?? null;
+  /**
+   * Async lookup that calls the Python lookup function.
+   */
+  async get(strokeTuple: string[]): Promise<string | null> {
+    if (!this._py) {
+      return null;
+    }
+    if (strokeTuple.length > this._longestKey) {
+      return null;
+    }
+
+    try {
+      // Build Python tuple from stroke array - escape backslashes first, then single quotes
+      const tupleStr = `(${strokeTuple.map(s => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`).join(', ')}${strokeTuple.length === 1 ? ',' : ''})`;
+      
+      const result = await this._py.repr(`__safe_lookup(${tupleStr})`);
+      
+      const trimmed = result.trim();
+      if (trimmed && trimmed !== 'None') {
+        // Remove surrounding quotes if present
+        if ((trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+            (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
+          return trimmed.slice(1, -1);
+        }
+        return trimmed;
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
 
-  has(strokeTuple: string[]): boolean {
-    return this.get(strokeTuple) !== null;
+  /**
+   * Async check if stroke tuple exists in dictionary.
+   */
+  async has(strokeTuple: string[]): Promise<boolean> {
+    const result = await this.get(strokeTuple);
+    return result !== null;
   }
 
   set(_strokeTuple: string[], _translation: string): void {
@@ -164,40 +182,61 @@ __sp_collect_entries()
     throw new Error('Unsupported operation: Python dictionary is read-only');
   }
 
+  /**
+   * For Python dictionaries with dynamic lookup, we cannot iterate entries.
+   */
   *entries(): Generator<[string[], string]> {
-    for (const [key, value] of this.entriesMap.entries()) {
-      yield [key.split('/'), value];
-    }
+    // Cannot enumerate entries for dynamic Python dictionaries
   }
 
   items(): Array<[string[], string]> {
     return [...this.entries()];
   }
 
-  reverseLookup(translation: string): Set<string[]> {
-    const result: string[][] = [];
-    const seen = new Set<string>();
-    for (const [key, value] of this.entriesMap.entries()) {
-      if (value === translation) {
-        const tuple = key.split('/');
-        const signature = tuple.join('/');
-        if (!seen.has(signature)) {
-          seen.add(signature);
-          result.push(tuple);
+  /**
+   * Async reverse lookup that calls the Python reverse_lookup function if available.
+   */
+  async reverseLookup(translation: string): Promise<Set<string[]>> {
+    if (!this._py || !this._hasReverseLookup) {
+      return new Set();
+    }
+
+    try {
+      const escapedTranslation = translation.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      
+      // Use exec to set up the result, then repr to get it
+      await this._py.exec(`import json; __reverse_result = json.dumps([list(s) for s in __safe_reverse_lookup('${escapedTranslation}')])`);
+      const result = await this._py.repr('__reverse_result');
+
+      const trimmed = result.trim();
+      if (trimmed && trimmed !== "'[]'" && trimmed !== '[]') {
+        try {
+          const parsed = JSON.parse(trimmed.replace(/^'|'$/g, ''));
+          if (Array.isArray(parsed)) {
+            return new Set(parsed.filter(Array.isArray));
+          }
+        } catch {
+          // ignore parse errors
         }
       }
+      return new Set();
+    } catch {
+      return new Set();
     }
-    return new Set(result);
   }
 
-  caseReverseLookup(translation: string): Set<string> {
-    const lower = translation.toLowerCase();
-    const matches = new Set<string>();
-    for (const value of this.entriesMap.values()) {
-      if (value.toLowerCase() === lower) {
-        matches.add(value);
-      }
+  caseReverseLookup(_translation: string): Set<string> {
+    // Not supported for dynamic Python dictionaries
+    return new Set();
+  }
+
+  /**
+   * Terminate the Python runtime when done.
+   */
+  terminate(): void {
+    if (this._py) {
+      this._py.terminate();
+      this._py = null;
     }
-    return matches;
   }
 }

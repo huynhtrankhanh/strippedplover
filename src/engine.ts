@@ -464,7 +464,7 @@ export class StrippedPlover {
           result = this.lookup(params);
           break;
         case 'reverse_lookup':
-          result = this.reverseLookup(params);
+          result = await this.reverseLookup(params);
           break;
         case 'list_dictionaries':
           result = this.listDictionaries();
@@ -755,13 +755,13 @@ export class StrippedPlover {
     };
   }
 
-  private reverseLookup(params: Record<string, unknown>): Record<string, unknown> {
+  private async reverseLookup(params: Record<string, unknown>): Promise<Record<string, unknown>> {
     const translation = params.translation as string;
     if (!translation) {
       throw new Error('Translation is required');
     }
 
-    const strokes = this.dictionaries.reverseLookup(translation);
+    const strokes = await this.dictionaries.reverseLookup(translation);
 
     return {
       translation,

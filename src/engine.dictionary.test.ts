@@ -1,30 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { StrippedPlover } from './engine.js';
 import { StenoDictionary } from './dictionary/index.js';
-
-vi.mock('node:sqlite', () => {
-  class Statement {
-    get() {
-      return { count: 0 };
-    }
-    all() {
-      return [];
-    }
-    run() {
-      return { changes: 0 };
-    }
-  }
-
-  class FakeDatabase {
-    exec(): void {}
-    prepare(): Statement {
-      return new Statement();
-    }
-    close(): void {}
-  }
-
-  return { DatabaseSync: FakeDatabase };
-});
 
 function createEngine(paths: string[]): StrippedPlover {
   const engine = new StrippedPlover();
