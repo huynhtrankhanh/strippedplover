@@ -51,6 +51,11 @@ export class PythonDictionary implements StenoDictionaryLike {
         'def __sp_blocked(*args, **kwargs):',
         "    raise RuntimeError('unsupported in sandbox')",
         'builtins.open = __sp_blocked',
+        'try:',
+        '    import js',
+        '    raise RuntimeError("js module should not be available")',
+        'except Exception:',
+        '    pass',
       ].join('\n')
     );
 
