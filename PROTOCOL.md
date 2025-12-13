@@ -248,7 +248,7 @@ Get the current starting stroke state.
 
 #### `add_dictionary`
 
-Add a dictionary file to the engine.
+Add a dictionary file to the engine. Supports both JSON (`.json`) and Python (`.py`) dictionary formats.
 
 **Request:**
 ```json
@@ -272,6 +272,8 @@ Add a dictionary file to the engine.
   }
 }
 ```
+
+**Note:** Python dictionaries are loaded asynchronously and executed in a sandboxed WebAssembly environment using Pyodide. They are always read-only.
 
 #### `remove_dictionary`
 
@@ -496,7 +498,7 @@ Get all entries from a specific dictionary.
 
 Import dictionary entries from a protocol message. This creates a new in-memory dictionary or updates an existing one.
 
-**Request:**
+**JSON Dictionary Request:**
 ```json
 {
   "id": "8",
@@ -513,10 +515,22 @@ Import dictionary entries from a protocol message. This creates a new in-memory 
 }
 ```
 
+**Python Dictionary Request:**
+```json
+{
+  "id": "8",
+  "method": "import_dictionary",
+  "params": {
+    "path": "my-dictionary.py",
+    "data": "LONGEST_KEY = 2\n\ndef lookup(strokes):\n    if strokes == ('TEFT',):\n        return 'test'\n    raise KeyError"
+  }
+}
+```
+
 Parameters:
-- `path` (string, required): Identifier for the dictionary
-- `data` (object, required): Dictionary entries as stroke -> translation mapping
-- `merge` (boolean, optional): If true, merge with existing entries. If false (default), replace all entries.
+- `path` (string, required): Identifier for the dictionary (extension determines type)
+- `data` (object or string, required): For JSON dictionaries, an object mapping strokes to translations. For Python dictionaries, a string containing Python source code.
+- `merge` (boolean, optional): If true, merge with existing entries (JSON only). If false (default), replace all entries.
 
 **Response:**
 ```json
@@ -525,14 +539,17 @@ Parameters:
   "result": {
     "status": "ok",
     "path": "my-dictionary.json",
+    "format": "json",
     "entries": 3
   }
 }
 ```
 
+**Note:** Python dictionaries are always read-only and cannot be merged. The `format` field in the response indicates `"json"` or `"python"`.
+
 #### `export_dictionary`
 
-Export all entries from a dictionary as a protocol message.
+Export all entries from a dictionary as a protocol message. For Python dictionaries, exports the Python source code.
 
 **Request:**
 ```json
@@ -545,7 +562,7 @@ Export all entries from a dictionary as a protocol message.
 }
 ```
 
-**Response:**
+**JSON Dictionary Response:**
 ```json
 {
   "id": "9",
@@ -562,7 +579,22 @@ Export all entries from a dictionary as a protocol message.
 }
 ```
 
+**Python Dictionary Response:**
+```json
+{
+  "id": "9",
+  "result": {
+    "status": "ok",
+    "path": "my-dictionary.py",
+    "format": "python",
+    "data": "LONGEST_KEY = 2\n\ndef lookup(strokes):\n    ..."
+  }
+}
+```
+
 ### Entry CRUD Operations
+
+**Note:** Entry CRUD operations (`add_entry`, `remove_entry`, `update_entry`) are not supported for Python dictionaries. Python dictionaries are always read-only, and attempting CRUD operations on them will return a "Dictionary is read-only" error.
 
 #### `add_entry`
 
@@ -780,6 +812,58 @@ Strokes use the RTFCRE format (steno notation). Examples:
 - `HEL/HROE` - a multi-stroke outline (strokes separated by `/`)
 - `*` - asterisk (correction/undo key)
 - `-G` - right-hand key with explicit hyphen
+
+## Python Dictionary Format
+
+Python dictionaries (`.py` files) allow programmatic stroke translation using Python code executed in a sandboxed WebAssembly environment (Pyodide). This provides compatibility with the [plover-python-dictionary](https://github.com/benoit-pierre/plover_python_dictionary) plugin.
+
+### Required Elements
+
+A Python dictionary must define:
+
+1. **`LONGEST_KEY`** (int): The maximum number of strokes this dictionary can handle in a single lookup.
+
+2. **`lookup(strokes)`** (function): Takes a tuple of stroke strings and returns the translation string. Must raise `KeyError` if no translation exists.
+
+### Optional Elements
+
+3. **`reverse_lookup(text)`** (function): Takes a translation string and returns an iterable of stroke tuples that produce that translation. Used for reverse lookups.
+
+### Example Python Dictionary
+
+```python
+LONGEST_KEY = 3
+
+def lookup(strokes):
+    if strokes == ("TEFT",):
+        return "test"
+    if strokes == ("HEL", "HROE"):
+        return "hello"
+    if strokes == ("KO", "PEU", "HROE"):
+        return "completely"
+    raise KeyError
+
+def reverse_lookup(text):
+    if text == "test":
+        return [("TEFT",)]
+    if text == "hello":
+        return [("HEL", "HROE")]
+    return []
+```
+
+### Security
+
+Python code is executed in a sandboxed WebAssembly environment using [Pyodide](https://pyodide.org/). This severely constrains what the code can do:
+- No file system access
+- No network access
+- No subprocess execution
+- Limited to pure Python computation
+
+### Limitations
+
+- Python dictionaries are **always read-only** - CRUD operations return an error
+- Python dictionaries do not support enumeration - `length` returns 0 and `items()` returns empty
+- Existing Python dictionaries cannot be updated - they must be removed and re-added
 
 ## Engine Commands in Translations
 
