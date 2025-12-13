@@ -7,7 +7,17 @@
 
 import { Stroke, normalizeSteno } from '../stroke.js';
 
-type DatabaseSyncCtor = typeof import('node:sqlite').DatabaseSync | null;
+type DatabaseSyncInstance = {
+  exec(sql: string): void;
+  prepare(sql: string): {
+    get(...args: unknown[]): any;
+    all(...args: unknown[]): Array<any>;
+    run(...args: unknown[]): { changes?: number | bigint };
+  };
+  close(): void;
+};
+
+type DatabaseSyncCtor = (new (...args: any[]) => DatabaseSyncInstance) | null;
 let DatabaseSync: DatabaseSyncCtor = null;
 try {
   ({ DatabaseSync } = await import('node:sqlite'));
@@ -43,7 +53,7 @@ export interface StenoDictionaryOptions {
  * A steno dictionary backed by SQLite
  */
 export class StenoDictionary implements StenoDictionaryLike {
-  private db: any;
+  private db: DatabaseSyncInstance;
   private _path: string;
   private _readonly: boolean;
   private _enabled: boolean;
@@ -178,7 +188,7 @@ export class StenoDictionary implements StenoDictionaryLike {
       this.recalculateLongestKey();
     }
 
-    return result.changes > 0;
+    return (result.changes ?? 0) > 0;
   }
 
   /**
