@@ -25,7 +25,7 @@ vi.mock('node:sqlite', () => {
   return { DatabaseSync: FakeDatabase };
 });
 
-vi.mock('python-wasm', () => {
+vi.mock('../../vendor/python-wasm/dist/node.js', () => {
   const state = {
     longestKey: 0,
     entries: new Map<string, string>(),
@@ -76,7 +76,7 @@ vi.mock('python-wasm', () => {
       return stub;
     },
   };
-}, { virtual: true });
+});
 
 import { loadDictionary } from './loader.js';
 

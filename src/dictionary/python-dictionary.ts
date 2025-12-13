@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { StenoDictionaryLike } from './steno-dictionary.js';
-import { asyncPython, PythonWasmAsync } from 'python-wasm';
+// Use vendored python-wasm with sandboxed POSIX operations
+import { asyncPython, PythonWasmAsync } from '../../vendor/python-wasm/dist/node.js';
 
 type PythonRuntime = PythonWasmAsync;
 
