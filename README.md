@@ -15,7 +15,7 @@ Stripped Plover is a streamlined version of [Plover](https://github.com/opensten
 - **Import/Export**: Dictionary import/export via protocol messages
 - **Stateful translation**: Supports multi-stroke translations and undo
 - **Dictionary stack control**: RPCs and `{PLOVER:...}` commands (PRIORITY/TOGGLE/SOLO/END_SOLO) matching the `plover_dict_commands` syntax
-- **Sandboxed Python dictionaries**: Load `.py` plover dictionaries in a WASM sandbox (read-only; CRUD/import not supported)
+ - **Sandboxed Python dictionaries**: Load `.py` plover dictionaries in a WASM sandbox (read-only at runtime; import/export supported)
 
 ## Requirements
 
@@ -71,6 +71,10 @@ Dictionaries can be imported and exported via protocol messages:
 // Export a dictionary
 {"id": "2", "method": "export_dictionary", "params": {"path": "my.json"}}
 // Response includes: {"result": {"data": {"TEFT": "test"}, ...}}
+
+// Python dictionaries are supported too (a .py file is generated with DICTIONARY, LONGEST_KEY, lookup, reverse_lookup):
+{"id": "3", "method": "import_dictionary", "params": {"path": "custom.py", "data": {"TEFT": "test"}}}
+{"id": "4", "method": "export_dictionary", "params": {"path": "custom.py"}}
 ```
 
 ## MANIFESTO

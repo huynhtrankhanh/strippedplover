@@ -224,8 +224,8 @@ export class Translator {
     this._dictionary = new StenoDictionaryCollection();
   }
 
-  translate(stroke: Stroke): void {
-    this.translateStroke(stroke);
+  async translate(stroke: Stroke): Promise<void> {
+    await this.translateStroke(stroke);
     this.flush();
   }
 

@@ -494,7 +494,7 @@ Get all entries from a specific dictionary.
 
 #### `import_dictionary`
 
-Import dictionary entries from a protocol message. This creates a new in-memory dictionary or updates an existing one.
+Import dictionary entries from a protocol message. This creates a new dictionary or updates an existing one. For `.py` paths a plover-compatible Python dictionary file is generated (with `DICTIONARY`, `LONGEST_KEY`, `lookup`, and `reverse_lookup`).
 
 **Request:**
 ```json
@@ -532,7 +532,7 @@ Parameters:
 
 #### `export_dictionary`
 
-Export all entries from a dictionary as a protocol message.
+Export all entries from a dictionary as a protocol message. Python dictionaries are exported by enumerating the `DICTIONARY` mapping if present.
 
 **Request:**
 ```json
