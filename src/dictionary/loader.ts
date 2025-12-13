@@ -5,8 +5,9 @@
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { StenoDictionary } from './steno-dictionary.js';
+import { StenoDictionary, StenoDictionaryLike } from './steno-dictionary.js';
 import { normalizeSteno } from '../stroke.js';
+import { PythonDictionary } from './python-dictionary.js';
 
 /**
  * Load a dictionary from a JSON file
@@ -43,12 +44,14 @@ export function createDictionary(path: string): StenoDictionary {
 /**
  * Load a dictionary from a file (auto-detect format from extension)
  */
-export function loadDictionary(path: string): StenoDictionary {
+export async function loadDictionary(path: string): Promise<StenoDictionaryLike> {
   const extension = path.split('.').pop()?.toLowerCase();
   
   switch (extension) {
     case 'json':
       return loadJsonDictionary(path);
+    case 'py':
+      return PythonDictionary.load(path);
     default:
       throw new Error(`Unsupported dictionary format: ${extension}`);
   }

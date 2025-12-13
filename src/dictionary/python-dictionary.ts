@@ -1,0 +1,167 @@
+import { readFileSync } from 'node:fs';
+import { StenoDictionaryLike } from './steno-dictionary.js';
+
+const MICROPY_HEAP_SIZE = 64 * 1024;
+
+function ensureArray(value: unknown): string[] | null {
+  if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
+    return value as string[];
+  }
+  return null;
+}
+
+export class PythonDictionary implements StenoDictionaryLike {
+  private entriesMap: Map<string, string> = new Map();
+  private _path: string;
+  readonly = true;
+  enabled: boolean;
+  private _longestKey = 0;
+
+  private constructor(path: string, enabled = true) {
+    this._path = path;
+    this.enabled = enabled;
+  }
+
+  static async load(path: string): Promise<PythonDictionary> {
+    const dict = new PythonDictionary(path);
+    await dict.loadFromPython(path);
+    return dict;
+  }
+
+  private async loadFromPython(path: string): Promise<void> {
+    // Load micropython in a minimal sandbox: no JS bridge, no host FS exposure.
+    const mp: any = await (require('micropython'));
+    mp.init(MICROPY_HEAP_SIZE);
+    await mp.do_str("import sys\nsys.modules.pop('js', None)\n");
+
+    const content = readFileSync(path, 'utf-8');
+    await mp.do_str(content);
+
+    // Collect longest key
+    const longestRaw = await mp.do_str('print(int(LONGEST_KEY))');
+    this._longestKey = Number.parseInt(String(longestRaw).trim(), 10) || 0;
+
+    // Collect entries (best-effort) into JSON for synchronous lookup
+    const entriesRaw = await mp.do_str(`
+import json
+def __sp_collect_entries():
+    merged = {}
+    for name in ('ENTRIES', 'DICTIONARY', 'dictionary', 'DICT'):
+        obj = globals().get(name)
+        if isinstance(obj, dict):
+            try:
+                merged.update(obj)
+            except Exception:
+                pass
+    if not merged and 'entries' in globals() and callable(entries):
+        try:
+            for k, v in entries():
+                merged[k] = v
+        except Exception:
+            pass
+    result = []
+    for k, v in merged.items():
+        try:
+            result.append([list(k), v])
+        except Exception:
+            pass
+    print(json.dumps(result))
+__sp_collect_entries()
+`);
+
+    let parsed: unknown = [];
+    try {
+      parsed = JSON.parse(String(entriesRaw).trim());
+    } catch {
+      parsed = [];
+    }
+
+    if (!Array.isArray(parsed)) {
+      parsed = [];
+    }
+
+    for (const entry of parsed as unknown[]) {
+      if (!Array.isArray(entry) || entry.length !== 2) continue;
+      const key = ensureArray(entry[0]);
+      const value = entry[1];
+      if (!key || typeof value !== 'string') continue;
+      const normalizedKey = key.join('/');
+      this.entriesMap.set(normalizedKey, value);
+      if (key.length > this._longestKey) {
+        this._longestKey = key.length;
+      }
+    }
+  }
+
+  get path(): string {
+    return this._path;
+  }
+
+  set path(value: string) {
+    this._path = value;
+  }
+
+  get longestKey(): number {
+    return this._longestKey;
+  }
+
+  get length(): number {
+    return this.entriesMap.size;
+  }
+
+  get(strokeTuple: string[]): string | null {
+    const key = strokeTuple.join('/');
+    return this.entriesMap.get(key) ?? null;
+  }
+
+  has(strokeTuple: string[]): boolean {
+    return this.get(strokeTuple) !== null;
+  }
+
+  set(): void {
+    throw new Error('Unsupported operation: Python dictionary is read-only');
+  }
+
+  delete(): boolean {
+    throw new Error('Unsupported operation: Python dictionary is read-only');
+  }
+
+  clear(): void {
+    throw new Error('Unsupported operation: Python dictionary is read-only');
+  }
+
+  update(): void {
+    throw new Error('Unsupported operation: Python dictionary is read-only');
+  }
+
+  *entries(): Generator<[string[], string]> {
+    for (const [key, value] of this.entriesMap.entries()) {
+      yield [key.split('/'), value];
+    }
+  }
+
+  items(): Array<[string[], string]> {
+    return [...this.entries()];
+  }
+
+  reverseLookup(translation: string): Set<string[]> {
+    const result: string[][] = [];
+    for (const [key, value] of this.entriesMap.entries()) {
+      if (value === translation) {
+        result.push(key.split('/'));
+      }
+    }
+    return new Set(result);
+  }
+
+  caseReverseLookup(translation: string): Set<string> {
+    const lower = translation.toLowerCase();
+    const matches = new Set<string>();
+    for (const value of this.entriesMap.values()) {
+      if (value.toLowerCase() === lower) {
+        matches.add(value);
+      }
+    }
+    return matches;
+  }
+}

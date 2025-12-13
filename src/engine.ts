@@ -5,7 +5,7 @@
  */
 
 import { Stroke, normalizeSteno } from './stroke.js';
-import { StenoDictionary, StenoDictionaryCollection, loadDictionary } from './dictionary/index.js';
+import { StenoDictionary, StenoDictionaryCollection, StenoDictionaryLike, loadDictionary } from './dictionary/index.js';
 import { Translator, Translation } from './translation.js';
 import { Formatter, Action, Case } from './formatting.js';
 import * as system from './system/index.js';
@@ -280,7 +280,7 @@ export class StrippedPlover {
     return p.replace(/\\/g, '/').replace(/\/+/g, '/');
   }
 
-  private findDictionaryIndex(path: string, dicts: StenoDictionary[] = this.dictionaries.dicts): number {
+  private findDictionaryIndex(path: string, dicts: StenoDictionaryLike[] = this.dictionaries.dicts): number {
     const normalizedTarget = this.normalizeDictPath(path);
     const targetSuffix = `/${normalizedTarget}`;
 
@@ -306,7 +306,7 @@ export class StrippedPlover {
     return matches[0].index;
   }
 
-  private reprioritize(paths: string[], dicts: StenoDictionary[] = this.dictionaries.dicts): StenoDictionary[] {
+  private reprioritize(paths: string[], dicts: StenoDictionaryLike[] = this.dictionaries.dicts): StenoDictionaryLike[] {
     const working = [...dicts];
     for (let i = paths.length - 1; i >= 0; i--) {
       const idx = this.findDictionaryIndex(paths[i], working);
@@ -316,7 +316,7 @@ export class StrippedPlover {
     return working;
   }
 
-  private applyToggleSpecs(toggles: string[], dicts: StenoDictionary[] = this.dictionaries.dicts): StenoDictionary[] {
+  private applyToggleSpecs(toggles: string[], dicts: StenoDictionaryLike[] = this.dictionaries.dicts): StenoDictionaryLike[] {
     const working = [...dicts];
     for (const spec of toggles) {
       const trimmed = spec.trim();
@@ -409,7 +409,7 @@ export class StrippedPlover {
     return [];
   }
 
-  handleRequest(request: ProtocolRequest): ProtocolResponse & { quit?: boolean } {
+  async handleRequest(request: ProtocolRequest): Promise<ProtocolResponse & { quit?: boolean }> {
     const requestId = request.id;
     const method = request.method ?? '';
     const params = request.params ?? {};
@@ -446,7 +446,7 @@ export class StrippedPlover {
           result = this.endSoloDictionariesRpc();
           break;
         case 'add_dictionary':
-          result = this.addDictionary(params);
+          result = await this.addDictionary(params);
           break;
         case 'remove_dictionary':
           result = this.removeDictionary(params);
@@ -476,7 +476,7 @@ export class StrippedPlover {
           result = this.exportDictionary(params);
           break;
         case 'import_dictionary':
-          result = this.importDictionary(params);
+          result = await this.importDictionary(params);
           break;
         case 'quit':
           return { id: requestId, result: { status: 'ok' }, quit: true };
@@ -603,13 +603,13 @@ export class StrippedPlover {
     return { status: 'ok', dictionaries: this.describeDictionaries(), solo: false };
   }
 
-  private addDictionary(params: Record<string, unknown>): Record<string, unknown> {
+  private async addDictionary(params: Record<string, unknown>): Promise<Record<string, unknown>> {
     const path = params.path as string;
     if (!path) {
       throw new Error('Dictionary path is required');
     }
 
-    const dictionary = loadDictionary(path);
+    const dictionary = await loadDictionary(path);
     const dicts = [...this.dictionaries.dicts, dictionary];
     this.dictionaries.setDicts(dicts);
 
@@ -641,7 +641,7 @@ export class StrippedPlover {
     }
 
     const strokeTuple = normalizeSteno(stroke, false);
-    let dictionary: StenoDictionary;
+    let dictionary: StenoDictionaryLike;
 
     if (path) {
       const d = this.dictionaries.get(path);
@@ -712,7 +712,7 @@ export class StrippedPlover {
     }
 
     const strokeTuple = normalizeSteno(stroke, false);
-    let dictionary: StenoDictionary | null = null;
+    let dictionary: StenoDictionaryLike | null = null;
 
     if (path) {
       dictionary = this.dictionaries.get(path);
@@ -823,7 +823,7 @@ export class StrippedPlover {
   /**
    * Import a dictionary - reads entries from the request
    */
-  private importDictionary(params: Record<string, unknown>): Record<string, unknown> {
+  private async importDictionary(params: Record<string, unknown>): Promise<Record<string, unknown>> {
     const path = params.path as string;
     const data = params.data as Record<string, string>;
     const merge = params.merge as boolean ?? false;

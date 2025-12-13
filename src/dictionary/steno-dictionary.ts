@@ -8,6 +8,24 @@
 import { DatabaseSync } from 'node:sqlite';
 import { Stroke, normalizeSteno } from '../stroke.js';
 
+export interface StenoDictionaryLike {
+  path: string;
+  readonly: boolean;
+  enabled: boolean;
+  longestKey: number;
+  length: number;
+  get(strokeTuple: string[]): string | null;
+  has(strokeTuple: string[]): boolean;
+  set(strokeTuple: string[], translation: string): void;
+  delete(strokeTuple: string[]): boolean;
+  clear(): void;
+  update(entries: Iterable<[string[], string]>): void;
+  items(): Array<[string[], string]>;
+  entries(): Generator<[string[], string]>;
+  reverseLookup(translation: string): Set<string[]>;
+  caseReverseLookup(translation: string): Set<string>;
+}
+
 export interface StenoDictionaryOptions {
   path?: string;
   readonly?: boolean;
@@ -17,7 +35,7 @@ export interface StenoDictionaryOptions {
 /**
  * A steno dictionary backed by SQLite
  */
-export class StenoDictionary {
+export class StenoDictionary implements StenoDictionaryLike {
   private db: DatabaseSync;
   private _path: string;
   private _readonly: boolean;
@@ -300,14 +318,14 @@ export class StenoDictionary {
  * A collection of steno dictionaries with priority ordering
  */
 export class StenoDictionaryCollection {
-  private _dicts: StenoDictionary[] = [];
+  private _dicts: StenoDictionaryLike[] = [];
   private _filters: Array<(key: string[], value: string) => boolean> = [];
 
-  constructor(dicts: StenoDictionary[] = []) {
+  constructor(dicts: StenoDictionaryLike[] = []) {
     this.setDicts(dicts);
   }
 
-  get dicts(): StenoDictionary[] {
+  get dicts(): StenoDictionaryLike[] {
     return this._dicts;
   }
 
@@ -321,7 +339,7 @@ export class StenoDictionaryCollection {
     return max;
   }
 
-  setDicts(dicts: StenoDictionary[]): void {
+  setDicts(dicts: StenoDictionaryLike[]): void {
     this._dicts = [...dicts];
   }
 
@@ -341,7 +359,7 @@ export class StenoDictionaryCollection {
 
   private _lookupKeepDeleted(
     key: string[],
-    dicts?: StenoDictionary[],
+    dicts?: StenoDictionaryLike[],
     filters: Array<(key: string[], value: string) => boolean> = []
   ): string | null {
     const searchDicts = dicts ?? this._dicts;
@@ -420,7 +438,7 @@ export class StenoDictionaryCollection {
   /**
    * Get the first writable dictionary
    */
-  firstWritable(): StenoDictionary {
+  firstWritable(): StenoDictionaryLike {
     for (const d of this._dicts) {
       if (!d.readonly) {
         return d;
@@ -432,7 +450,7 @@ export class StenoDictionaryCollection {
   /**
    * Get a dictionary by path
    */
-  get(path: string): StenoDictionary | null {
+  get(path: string): StenoDictionaryLike | null {
     for (const d of this._dicts) {
       if (d.path === path) {
         return d;
