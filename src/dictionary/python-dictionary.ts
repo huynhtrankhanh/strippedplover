@@ -125,11 +125,11 @@ __sp_collect_entries()
     return this.get(strokeTuple) !== null;
   }
 
-  set(): void {
+  set(_strokeTuple: string[], _translation: string): void {
     throw new Error('Unsupported operation: Python dictionary is read-only');
   }
 
-  delete(): boolean {
+  delete(_strokeTuple: string[]): boolean {
     throw new Error('Unsupported operation: Python dictionary is read-only');
   }
 
@@ -137,7 +137,7 @@ __sp_collect_entries()
     throw new Error('Unsupported operation: Python dictionary is read-only');
   }
 
-  update(): void {
+  update(_entries: Iterable<[string[], string]>): void {
     throw new Error('Unsupported operation: Python dictionary is read-only');
   }
 
