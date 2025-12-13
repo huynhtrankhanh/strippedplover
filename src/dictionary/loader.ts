@@ -85,6 +85,7 @@ function escapePythonString(value: string): string {
 
 function tupleLiteral(stroke: string[]): string {
   const body = stroke.map(s => `'${escapePythonString(s)}'`).join(', ');
+  // Python requires a trailing comma for single-element tuples.
   return `(${body}${stroke.length === 1 ? ',' : ''})`;
 }
 
