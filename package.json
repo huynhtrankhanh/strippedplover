@@ -25,7 +25,6 @@
   "author": "Open Steno Project",
   "license": "GPL-2.0-or-later",
   "dependencies": {
-    "micropython": "^1.1.8",
     "python-wasm": "^0.28.1"
   },
   "devDependencies": {

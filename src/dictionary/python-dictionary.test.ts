@@ -25,7 +25,7 @@ vi.mock('node:sqlite', () => {
   return { DatabaseSync: FakeDatabase };
 });
 
-vi.mock('micropython', () => {
+vi.mock('python-wasm', () => {
   const state = {
     longestKey: 0,
     entries: new Map<string, string>(),
@@ -48,16 +48,18 @@ vi.mock('micropython', () => {
   }
 
   const stub = {
-    init: (_heap: number) => {},
-    do_str: async (code: string) => {
+    async exec(code: string) {
       if (code.includes('LONGEST_KEY') && code.includes('ENTRIES')) {
         parsePythonDict(code);
         return '';
       }
-      if (code.startsWith('print(int(LONGEST_KEY')) {
+      return '';
+    },
+    async repr(expr: string) {
+      if (expr.includes('int(LONGEST_KEY')) {
         return String(state.longestKey);
       }
-      if (code.includes('__sp_collect_entries')) {
+      if (expr.includes('__sp_collect_entries')) {
         const arr: Array<[string[], string]> = [];
         for (const [k, v] of state.entries.entries()) {
           arr.push([[k], v]);
@@ -70,13 +72,15 @@ vi.mock('micropython', () => {
 
   return {
     __esModule: true,
-    default: stub,
+    async asyncPython() {
+      return stub;
+    },
   };
 }, { virtual: true });
 
 import { loadDictionary } from './loader.js';
 
-describe.skip('python dictionary loader (wasm sandbox)', () => {
+describe('python dictionary loader (wasm sandbox)', () => {
   it('loads entries and enforces read-only operations', async () => {
     const dir = tmpdir();
     const file = path.join(dir, `dict-${Date.now()}.py`);

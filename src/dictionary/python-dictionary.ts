@@ -1,17 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { StenoDictionaryLike } from './steno-dictionary.js';
+import { asyncPython, PythonWasmAsync } from 'python-wasm';
 
-const MICROPY_HEAP_SIZE = 64 * 1024;
-
-type MicroPythonModule = {
-  init: (heapSize: number) => void;
-  do_str: (code: string) => Promise<string> | string;
-};
-
-async function resolveMicropython(): Promise<MicroPythonModule> {
-  const raw = await (require('micropython') as Promise<MicroPythonModule> | MicroPythonModule);
-  return (raw as any).then ? await (raw as Promise<MicroPythonModule>) : (raw as MicroPythonModule);
-}
+type PythonRuntime = PythonWasmAsync;
 
 function ensureArray(value: unknown): string[] | null {
   if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
@@ -39,24 +30,28 @@ export class PythonDictionary implements StenoDictionaryLike {
   }
 
   private async loadFromPython(path: string): Promise<void> {
-    // Load micropython in a minimal sandbox: no JS bridge, no host FS exposure.
-    const mp = await resolveMicropython();
-    mp.init(MICROPY_HEAP_SIZE);
-    await mp.do_str(
+    // Use python-wasm (CPython) in bundle mode; no native host FS/JS bridge.
+    const py: PythonRuntime = await asyncPython({
+      fs: 'bundle',
+      noReadline: true,
+      noStdio: true,
+    });
+    await py.exec(
       [
-        'import sys, builtins',
-        "sys.modules.pop('js', None)",
-        "sys.modules.pop('os', None)",
-        "sys.modules.pop('subprocess', None)",
+        'import sys, builtins, importlib',
         'class __SpBlocker:',
         "    def find_spec(self, fullname, path=None, target=None):",
-        "        if fullname == 'js':",
+        "        if fullname in ('js', '_js') or fullname.startswith('js.'):",
         "            raise ImportError('js disabled')",
+        "        if fullname in ('os', 'subprocess'):",
+        "            raise ImportError('restricted module')",
         "        return None",
         'sys.meta_path.insert(0, __SpBlocker())',
         'def __sp_blocked(*args, **kwargs):',
         "    raise RuntimeError('unsupported in sandbox')",
         'builtins.open = __sp_blocked',
+        'for mod in ("js","_js","os","subprocess"):',
+        '    sys.modules.pop(mod, None)',
         'try:',
         '    import js',
         '    raise RuntimeError("js module should not be available")',
@@ -66,18 +61,18 @@ export class PythonDictionary implements StenoDictionaryLike {
     );
 
     const content = readFileSync(path, 'utf-8');
-    await mp.do_str(content);
+    await py.exec(content);
 
     // Collect longest key
-    const longestRaw = await mp.do_str('print(int(LONGEST_KEY))');
-    const pythonLongest = Number.parseInt(String(longestRaw).trim(), 10);
+    const longestRaw = await py.repr('int(LONGEST_KEY)');
+    const pythonLongest = Number.parseInt(String(longestRaw).replace(/[^0-9-]/g, ''), 10);
     if (!Number.isFinite(pythonLongest) || pythonLongest <= 0) {
       throw new Error('Invalid or missing LONGEST_KEY in python dictionary');
     }
     this._longestKey = pythonLongest;
 
     // Collect entries (best-effort) into JSON for synchronous lookup
-    const entriesRaw = await mp.do_str(`
+    const entriesRaw = await py.repr(`
 import json
 def __sp_collect_entries():
     merged = {}
@@ -100,13 +95,13 @@ def __sp_collect_entries():
             result.append([list(k), v])
         except Exception:
             pass
-    print(json.dumps(result))
+    return json.dumps(result)
 __sp_collect_entries()
 `);
 
     let parsed: unknown = [];
     try {
-      parsed = JSON.parse(String(entriesRaw).trim());
+      parsed = JSON.parse(String(entriesRaw));
     } catch {
       parsed = [];
     }
