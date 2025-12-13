@@ -3,6 +3,11 @@ import { StenoDictionaryLike } from './steno-dictionary.js';
 
 const MICROPY_HEAP_SIZE = 64 * 1024;
 
+type MicroPythonModule = {
+  init: (heapSize: number) => void;
+  do_str: (code: string) => Promise<string> | string;
+};
+
 function ensureArray(value: unknown): string[] | null {
   if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
     return value as string[];
@@ -30,7 +35,8 @@ export class PythonDictionary implements StenoDictionaryLike {
 
   private async loadFromPython(path: string): Promise<void> {
     // Load micropython in a minimal sandbox: no JS bridge, no host FS exposure.
-    const mp: any = await (require('micropython'));
+    const rawMp = await (require('micropython') as Promise<MicroPythonModule> | MicroPythonModule);
+    const mp: MicroPythonModule = (rawMp as any).then ? await (rawMp as Promise<MicroPythonModule>) : (rawMp as MicroPythonModule);
     mp.init(MICROPY_HEAP_SIZE);
     await mp.do_str("import sys\nsys.modules.pop('js', None)\n");
 
@@ -39,7 +45,8 @@ export class PythonDictionary implements StenoDictionaryLike {
 
     // Collect longest key
     const longestRaw = await mp.do_str('print(int(LONGEST_KEY))');
-    this._longestKey = Number.parseInt(String(longestRaw).trim(), 10) || 0;
+    const pythonLongest = Number.parseInt(String(longestRaw).trim(), 10) || 0;
+    this._longestKey = pythonLongest;
 
     // Collect entries (best-effort) into JSON for synchronous lookup
     const entriesRaw = await mp.do_str(`
@@ -146,9 +153,15 @@ __sp_collect_entries()
 
   reverseLookup(translation: string): Set<string[]> {
     const result: string[][] = [];
+    const seen = new Set<string>();
     for (const [key, value] of this.entriesMap.entries()) {
       if (value === translation) {
-        result.push(key.split('/'));
+        const tuple = key.split('/');
+        const signature = tuple.join('/');
+        if (!seen.has(signature)) {
+          seen.add(signature);
+          result.push(tuple);
+        }
       }
     }
     return new Set(result);
