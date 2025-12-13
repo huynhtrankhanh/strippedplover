@@ -138,8 +138,8 @@ def __safe_reverse_lookup(value):
     }
 
     try {
-      // Build Python tuple from stroke array
-      const tupleStr = `(${strokeTuple.map(s => `'${s.replace(/'/g, "\\'")}'`).join(', ')}${strokeTuple.length === 1 ? ',' : ''})`;
+      // Build Python tuple from stroke array - escape backslashes first, then single quotes
+      const tupleStr = `(${strokeTuple.map(s => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`).join(', ')}${strokeTuple.length === 1 ? ',' : ''})`;
       
       const result = await this._py.repr(`__safe_lookup(${tupleStr})`);
       
