@@ -15,9 +15,34 @@ export interface StenoDictionaryOptions {
 }
 
 /**
+ * Common interface for all dictionary types
+ */
+export interface BaseDictionary {
+  path: string;
+  readonly: boolean;
+  enabled: boolean;
+  timestamp: number;
+  longestKey: number;
+  length: number;
+  
+  get(strokeTuple: string[]): string | null;
+  set(strokeTuple: string[], translation: string): void;
+  delete(strokeTuple: string[]): boolean;
+  has(strokeTuple: string[]): boolean;
+  entries(): Generator<[string[], string]>;
+  items(): Array<[string[], string]>;
+  clear(): void;
+  update(entries: Iterable<[string[], string]>): void;
+  reverseLookup(translation: string): Set<string[]>;
+  caseReverseLookup(translation: string): Set<string>;
+  close(): void;
+  toJson(): Record<string, string>;
+}
+
+/**
  * A steno dictionary backed by SQLite
  */
-export class StenoDictionary {
+export class StenoDictionary implements BaseDictionary {
   private db: DatabaseSync;
   private _path: string;
   private _readonly: boolean;
@@ -300,14 +325,14 @@ export class StenoDictionary {
  * A collection of steno dictionaries with priority ordering
  */
 export class StenoDictionaryCollection {
-  private _dicts: StenoDictionary[] = [];
+  private _dicts: BaseDictionary[] = [];
   private _filters: Array<(key: string[], value: string) => boolean> = [];
 
-  constructor(dicts: StenoDictionary[] = []) {
+  constructor(dicts: BaseDictionary[] = []) {
     this.setDicts(dicts);
   }
 
-  get dicts(): StenoDictionary[] {
+  get dicts(): BaseDictionary[] {
     return this._dicts;
   }
 
@@ -321,7 +346,7 @@ export class StenoDictionaryCollection {
     return max;
   }
 
-  setDicts(dicts: StenoDictionary[]): void {
+  setDicts(dicts: BaseDictionary[]): void {
     this._dicts = [...dicts];
   }
 
@@ -341,7 +366,7 @@ export class StenoDictionaryCollection {
 
   private _lookupKeepDeleted(
     key: string[],
-    dicts?: StenoDictionary[],
+    dicts?: BaseDictionary[],
     filters: Array<(key: string[], value: string) => boolean> = []
   ): string | null {
     const searchDicts = dicts ?? this._dicts;
@@ -420,7 +445,7 @@ export class StenoDictionaryCollection {
   /**
    * Get the first writable dictionary
    */
-  firstWritable(): StenoDictionary {
+  firstWritable(): BaseDictionary {
     for (const d of this._dicts) {
       if (!d.readonly) {
         return d;
@@ -432,7 +457,7 @@ export class StenoDictionaryCollection {
   /**
    * Get a dictionary by path
    */
-  get(path: string): StenoDictionary | null {
+  get(path: string): BaseDictionary | null {
     for (const d of this._dicts) {
       if (d.path === path) {
         return d;

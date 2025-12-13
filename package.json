@@ -31,5 +31,8 @@
   },
   "engines": {
     "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "pyodide": "^0.29.0"
   }
 }

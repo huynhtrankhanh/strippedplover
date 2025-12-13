@@ -2,5 +2,14 @@
  * Dictionary Module
  */
 
-export { StenoDictionary, StenoDictionaryCollection } from './steno-dictionary.js';
-export { loadDictionary, loadJsonDictionary, createDictionary, saveDictionaryToJson } from './loader.js';
+export { StenoDictionary, StenoDictionaryCollection, type BaseDictionary } from './steno-dictionary.js';
+export { PythonDictionary } from './python-dictionary.js';
+export { 
+  loadDictionary, 
+  loadDictionaryAsync,
+  loadJsonDictionary, 
+  createDictionary, 
+  saveDictionaryToJson,
+  isPythonDictionary,
+  type Dictionary
+} from './loader.js';

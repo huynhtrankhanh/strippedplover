@@ -1,12 +1,16 @@
 /**
  * Dictionary Loading Module
  * 
- * Handles loading dictionaries from JSON files.
+ * Handles loading dictionaries from JSON and Python files.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { StenoDictionary } from './steno-dictionary.js';
+import { PythonDictionary } from './python-dictionary.js';
 import { normalizeSteno } from '../stroke.js';
+
+// Union type for all dictionary types
+export type Dictionary = StenoDictionary | PythonDictionary;
 
 /**
  * Load a dictionary from a JSON file
@@ -42,6 +46,7 @@ export function createDictionary(path: string): StenoDictionary {
 
 /**
  * Load a dictionary from a file (auto-detect format from extension)
+ * Note: For .py dictionaries, use loadDictionaryAsync instead
  */
 export function loadDictionary(path: string): StenoDictionary {
   const extension = path.split('.').pop()?.toLowerCase();
@@ -49,9 +54,35 @@ export function loadDictionary(path: string): StenoDictionary {
   switch (extension) {
     case 'json':
       return loadJsonDictionary(path);
+    case 'py':
+      throw new Error('Python dictionaries must be loaded asynchronously. Use loadDictionaryAsync instead.');
     default:
       throw new Error(`Unsupported dictionary format: ${extension}`);
   }
+}
+
+/**
+ * Load a dictionary from a file asynchronously (auto-detect format from extension)
+ * Supports both JSON and Python dictionaries
+ */
+export async function loadDictionaryAsync(path: string): Promise<Dictionary> {
+  const extension = path.split('.').pop()?.toLowerCase();
+  
+  switch (extension) {
+    case 'json':
+      return loadJsonDictionary(path);
+    case 'py':
+      return PythonDictionary.loadFromFile(path);
+    default:
+      throw new Error(`Unsupported dictionary format: ${extension}`);
+  }
+}
+
+/**
+ * Check if a path is a Python dictionary
+ */
+export function isPythonDictionary(path: string): boolean {
+  return path.split('.').pop()?.toLowerCase() === 'py';
 }
 
 /**
