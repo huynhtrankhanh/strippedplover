@@ -8,6 +8,11 @@ type MicroPythonModule = {
   do_str: (code: string) => Promise<string> | string;
 };
 
+async function resolveMicropython(): Promise<MicroPythonModule> {
+  const raw = await (require('micropython') as Promise<MicroPythonModule> | MicroPythonModule);
+  return (raw as any).then ? await (raw as Promise<MicroPythonModule>) : (raw as MicroPythonModule);
+}
+
 function ensureArray(value: unknown): string[] | null {
   if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
     return value as string[];
@@ -35,17 +40,29 @@ export class PythonDictionary implements StenoDictionaryLike {
 
   private async loadFromPython(path: string): Promise<void> {
     // Load micropython in a minimal sandbox: no JS bridge, no host FS exposure.
-    const rawMp = await (require('micropython') as Promise<MicroPythonModule> | MicroPythonModule);
-    const mp: MicroPythonModule = (rawMp as any).then ? await (rawMp as Promise<MicroPythonModule>) : (rawMp as MicroPythonModule);
+    const mp = await resolveMicropython();
     mp.init(MICROPY_HEAP_SIZE);
-    await mp.do_str("import sys\nsys.modules.pop('js', None)\n");
+    await mp.do_str(
+      [
+        'import sys, builtins',
+        "sys.modules.pop('js', None)",
+        "sys.modules.pop('os', None)",
+        "sys.modules.pop('subprocess', None)",
+        'def __sp_blocked(*args, **kwargs):',
+        "    raise RuntimeError('unsupported in sandbox')",
+        'builtins.open = __sp_blocked',
+      ].join('\n')
+    );
 
     const content = readFileSync(path, 'utf-8');
     await mp.do_str(content);
 
     // Collect longest key
     const longestRaw = await mp.do_str('print(int(LONGEST_KEY))');
-    const pythonLongest = Number.parseInt(String(longestRaw).trim(), 10) || 0;
+    const pythonLongest = Number.parseInt(String(longestRaw).trim(), 10);
+    if (!Number.isFinite(pythonLongest) || pythonLongest <= 0) {
+      throw new Error('Invalid or missing LONGEST_KEY in python dictionary');
+    }
     this._longestKey = pythonLongest;
 
     // Collect entries (best-effort) into JSON for synchronous lookup

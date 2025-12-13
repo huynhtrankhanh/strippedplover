@@ -834,6 +834,9 @@ export class StrippedPlover {
     if (!data || typeof data !== 'object') {
       throw new Error('Dictionary data is required');
     }
+    if (path.toLowerCase().endsWith('.py')) {
+      throw new Error('Import is not supported for Python dictionaries');
+    }
 
     let dictionary = this.dictionaries.get(path);
     
