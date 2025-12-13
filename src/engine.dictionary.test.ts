@@ -51,10 +51,10 @@ function getEnabled(engine: StrippedPlover): Record<string, boolean> {
 }
 
 describe('dictionary management RPC methods', () => {
-  it('reorders dictionaries with prioritize_dictionaries', () => {
+  it('reorders dictionaries with prioritize_dictionaries', async () => {
     const engine = createEngine(['main.json', 'user.json', 'commands.json']);
 
-    engine.handleRequest({
+    await engine.handleRequest({
       id: 1,
       method: 'prioritize_dictionaries',
       params: { paths: ['commands.json', 'user.json'] },
@@ -63,17 +63,17 @@ describe('dictionary management RPC methods', () => {
     expect(getOrder(engine)).toEqual(['commands.json', 'user.json', 'main.json']);
   });
 
-  it('enables and disables dictionaries explicitly', () => {
+  it('enables and disables dictionaries explicitly', async () => {
     const engine = createEngine(['main.json', 'user.json']);
 
-    engine.handleRequest({
+    await engine.handleRequest({
       id: 1,
       method: 'set_dictionary_enabled',
       params: { path: 'user.json', enabled: false },
     });
     expect(getEnabled(engine)).toMatchObject({ 'main.json': true, 'user.json': false });
 
-    engine.handleRequest({
+    await engine.handleRequest({
       id: 2,
       method: 'set_dictionary_enabled',
       params: { path: 'user.json', enabled: true },
@@ -81,10 +81,10 @@ describe('dictionary management RPC methods', () => {
     expect(getEnabled(engine)).toMatchObject({ 'main.json': true, 'user.json': true });
   });
 
-  it('applies toggle specifications with toggle_dictionaries', () => {
+  it('applies toggle specifications with toggle_dictionaries', async () => {
     const engine = createEngine(['dicts/main.json', 'dicts/user.json', 'dicts/commands.json']);
 
-    engine.handleRequest({
+    await engine.handleRequest({
       id: 1,
       method: 'toggle_dictionaries',
       params: { toggles: ['-user.json', '!commands.json'] },
@@ -99,7 +99,7 @@ describe('dictionary management RPC methods', () => {
 });
 
 describe('plover dictionary commands', () => {
-  it('supports PRIORITY_DICT and TOGGLE_DICT macros', () => {
+  it('supports PRIORITY_DICT and TOGGLE_DICT macros', async () => {
     const engine = createEngine(['a/main.json', 'b/user.json', 'c/commands.json']);
 
     engine.handleEngineCommand('PRIORITY_DICT:user.json');
@@ -113,7 +113,7 @@ describe('plover dictionary commands', () => {
     });
   });
 
-  it('supports SOLO_DICT and restores with END_SOLO_DICT', () => {
+  it('supports SOLO_DICT and restores with END_SOLO_DICT', async () => {
     const engine = createEngine(['main.json', 'user.json', 'commands.json']);
 
     engine.handleEngineCommand('SOLO_DICT:+commands.json');

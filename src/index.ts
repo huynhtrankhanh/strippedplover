@@ -33,7 +33,7 @@ async function main(): Promise<void> {
 
     try {
       const request = JSON.parse(trimmedLine) as ProtocolRequest;
-      const result = engine.handleRequest(request);
+      const result = await engine.handleRequest(request);
       
       const quit = (result as any).quit;
       delete (result as any).quit;

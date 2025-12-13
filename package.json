@@ -24,6 +24,9 @@
   ],
   "author": "Open Steno Project",
   "license": "GPL-2.0-or-later",
+  "dependencies": {
+    "python-wasm": "^0.28.1"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0",
