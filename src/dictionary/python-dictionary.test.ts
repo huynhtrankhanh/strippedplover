@@ -29,8 +29,8 @@ describe('python dictionary loader (SQLite-backed)', () => {
   });
 
   it('maintains isolated state between dictionary instances', async () => {
-    const dict1 = await PythonDictionary.load({ FIRST: 'first dictionary' }, { path: 'first' });
-    const dict2 = await PythonDictionary.load({ SECOND: 'second dictionary', 'TWO/STROKES': 'two strokes' }, { path: 'second' });
+    const dict1 = await PythonDictionary.load({ FIRST: 'first dictionary' }, { path: ':memory:' });
+    const dict2 = await PythonDictionary.load({ SECOND: 'second dictionary', 'TWO/STROKES': 'two strokes' }, { path: ':memory:' });
 
     expect(dict1.longestKey).toBe(1);
     expect(dict2.longestKey).toBe(2);
