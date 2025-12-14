@@ -1,42 +1,46 @@
-# Stripped Plover Testing Report
+# Testing Report
 
-## Test Environment
-- Node.js Version: 22.21.0 (node:sqlite built-in **available**; using `/usr/bin/node`)
-- Platform: Linux
-- Date: 2025-12-14
+## Code Review
 
-## Test Summary
+### Core Logic (`src/engine.ts`, `src/translation.ts`, etc.)
 
-| Test Category | Tests Run | Passed | Failed |
-|--------------|-----------|--------|--------|
-| Python dictionary unit tests | 9 | 9 | 0 |
-| Engine import/export (Python & JSON) | 2 | 2 | 0 |
-| Dictionary management & macros (SQLite-backed) | 5 | 5 | 0 |
-| STDIO end-to-end (JSON & Python) | 2 | 2 | 0 |
-| **Total** | **18** | **18** | **0** |
+The core logic seems to follow the Plover algorithm closely.
+*   **Engine**: Acts as a controller, dispatching requests and managing state.
+*   **Translation**: Handles the stateful translation process, including undo/redo logic.
+*   **Formatting**: Handles text formatting, including spacing, capitalization, and meta commands.
+*   **Strokes**: Handles steno stroke parsing and normalization.
 
-## Detailed Results
+### Dictionary Handling
 
-### Python dictionary unit tests
-- **Files:** `src/dictionary/python-dictionary.test.ts`
-- **Focus:** Loading plover-style `.py` dictionaries, LONGEST_KEY validation, lookup/reverse lookup, enumeration for export, and read-only enforcement.
-- **Result:** All 9 tests passed.
+*   **JSON Dictionaries**: Backed by SQLite. This is efficient for lookups and updates.
+*   **Python Dictionaries**: Executed in a WASM sandbox. This allows for safe execution of user code.
 
-### Engine import/export (Python & JSON)
-- **File:** `src/engine.python-import.test.ts`
-- **Scenario:** Import dictionary data into Python and JSON dictionaries via the protocol, export back, and translate using the loaded dictionaries.
-- **Result:** Both protocol flows passed; translations emit expected preedit output after import.
+### Protocol
 
-### Dictionary management & macros (SQLite-backed)
-- **File:** `src/engine.dictionary.test.ts`
-- **Focus:** Reordering, enabling/disabling, toggle specifications, and Plover macros (PRIORITY_DICT, TOGGLE_DICT, SOLO_DICT/END_SOLO_DICT) backed by SQLite storage.
-- **Result:** All 5 tests passed with the experimental `node:sqlite` built-in available.
+The JSON-RPC-like protocol over STDIO is simple and effective.
 
-### STDIO end-to-end (JSON & Python)
-- **File:** `src/e2e/stdio.e2e.test.ts`
-- **Scenario:** Built `dist/`, started the STDIO binary, imported JSON and Python dictionaries, translated strokes, exported entries, and quit.
-- **Result:** Both STDIO flows passed; protocol requests/responses validated.
+### Observations
 
-## Notes
-- Tests were executed with `npm test` (Vitest). The suite rebuilds TypeScript before STDIO end-to-end tests.
-- `node:sqlite` availability is required for dictionary management and was provided by Node.js 22.21.0 (NodeSource build). Experimental warnings for SQLite and MaxListeners were observed but did not affect results.
+1.  **Dictionary Path Handling**: The `remove_dictionary` method performs an exact string match on the dictionary path (identifier). This is by design, as paths are treated as unique identifiers. Clients must ensure they use the exact same string to remove a dictionary as they used to import it.
+
+### Test Coverage Gaps & Improvements
+
+New comprehensive tests were added in `src/engine.comprehensive.test.ts` covering:
+*   **Formatting**: Tested capitalization, glue, and attachment behavior. Confirmed that `attach` (suppress space) and `glue` work as intended.
+*   **Dictionary Priorities**: Verified that `prioritize_dictionaries` correctly changes translation results based on dictionary order.
+*   **Dictionary Management**: Verified `set_dictionary_enabled` and `remove_dictionary`.
+*   **Solo Mode**: Verified `solo_dictionaries` and `end_solo_dictionaries` correctly isolate and restore dictionary states.
+*   **CRUD**: Verified `add_entry`, `update_entry`, and `remove_entry`.
+*   **Python Dictionaries**: Verified that Python dictionaries can be imported and used for translation.
+
+## Test Results
+
+All existing and new tests passed.
+
+*   `src/engine.dictionary.test.ts`: Passed.
+*   `src/engine.python-import.test.ts`: Passed.
+*   `src/e2e/stdio.e2e.test.ts`: Passed.
+*   `src/dictionary/python-dictionary.test.ts`: Passed.
+*   `src/engine.comprehensive.test.ts`: Passed (8 tests).
+
+The codebase seems robust.
