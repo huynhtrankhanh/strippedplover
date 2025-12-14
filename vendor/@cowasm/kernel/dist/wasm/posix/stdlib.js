@@ -41,7 +41,7 @@ function stdlib({ child_process, os, recv, send, fs }) {
             // all of them (3 are requested), it just gives an error.
             return nelem;
         },
-        // SANDBOXED: system() is disabled to prevent arbitrary shell command execution
+        // SANDBOXED: system() removed - shell command execution is not allowed
         // int system(const char *command);
         system: (commandPtr) => {
             (0, util_1.notImplemented)("system: sandbox restricted");

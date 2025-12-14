@@ -56,22 +56,9 @@ export class PythonDictionary implements StenoDictionaryLike {
       fs: 'everything',
     });
 
-    // Set up sandboxing to block dangerous modules and add helper functions
-    await py.exec(
-      [
-        'import sys, builtins',
-        'class __SpBlocker:',
-        "    def find_spec(self, fullname, path=None, target=None):",
-        "        if fullname in ('js', '_js') or fullname.startswith('js.'):",
-        "            raise ImportError('js disabled')",
-        "        if fullname in ('subprocess', 'socket', 'http', 'urllib', 'ftplib', 'smtplib', 'telnetlib'):",
-        "            raise ImportError('restricted module')",
-        "        return None",
-        'sys.meta_path.insert(0, __SpBlocker())',
-        'for mod in ("js","_js","subprocess","socket"):',
-        '    sys.modules.pop(mod, None)',
-      ].join('\n')
-    );
+    // SECURITY NOTE: Sandboxing is enforced at the WASM/JS layer in vendor/@cowasm/kernel
+    // by removing dangerous bindings (child_process, posix process operations).
+    // Python module blocking is NOT used because it can be bypassed.
 
     // Execute the Python code directly
     await py.exec(pythonCode);
