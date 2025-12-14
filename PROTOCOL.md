@@ -250,36 +250,11 @@ Get the current starting stroke state.
 
 ### Dictionary Management
 
-Dictionary path matching is suffix-based for prioritization and enable/disable operations (`prioritize_dictionaries`, `set_dictionary_enabled`, `toggle_dictionaries`, `solo_dictionaries`, `end_solo_dictionaries`). For example, `user.json` will match `/configs/user.json`. Loading and removing dictionaries (`add_dictionary`, `remove_dictionary`) operate on the exact path you provide.
+Dictionary name matching is suffix-based for prioritization and enable/disable operations (`prioritize_dictionaries`, `set_dictionary_enabled`, `toggle_dictionaries`, `solo_dictionaries`, `end_solo_dictionaries`). For example, `user-dict` will match `configs/user-dict`.
 
-#### `add_dictionary`
-
-Add a dictionary file to the engine.
-
-**Request:**
-```json
-{
-  "id": "5",
-  "method": "add_dictionary",
-  "params": {
-    "path": "/path/to/dictionary.json"
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "id": "5",
-  "result": {
-    "status": "ok",
-    "path": "/path/to/dictionary.json",
-    "entries": 12345
-  }
-}
-```
-
-Supported formats are `.json` and `.py` (Plover-compatible Python dictionaries are loaded read-only).
+**Dictionary Types:**
+- **JSON dictionaries**: Store explicit stroke-to-translation entries. Writable at runtime.
+- **Python dictionaries**: Store Python code that implements lookup functions. Read-only at runtime.
 
 #### `remove_dictionary`
 
@@ -291,7 +266,7 @@ Remove a dictionary from the engine.
   "id": "6",
   "method": "remove_dictionary",
   "params": {
-    "path": "/path/to/dictionary.json"
+    "name": "my-dictionary"
   }
 }
 ```
@@ -302,7 +277,7 @@ Remove a dictionary from the engine.
   "id": "6",
   "result": {
     "status": "ok",
-    "path": "/path/to/dictionary.json"
+    "name": "my-dictionary"
   }
 }
 ```
@@ -487,7 +462,7 @@ List all loaded dictionaries.
 
 #### `get_dictionary_entries`
 
-Get all entries from a specific dictionary.
+Get all entries from a specific JSON dictionary. Not available for Python dictionaries (use `export_dictionary` instead).
 
 **Request:**
 ```json
@@ -495,7 +470,7 @@ Get all entries from a specific dictionary.
   "id": "8",
   "method": "get_dictionary_entries",
   "params": {
-    "path": "/path/to/dictionary.json"
+    "name": "my-dictionary"
   }
 }
 ```
@@ -505,7 +480,7 @@ Get all entries from a specific dictionary.
 {
   "id": "8",
   "result": {
-    "path": "/path/to/dictionary.json",
+    "name": "my-dictionary",
     "entries": [
       {"stroke": "TEFT", "translation": "test"},
       {"stroke": "HEL/HROE", "translation": "hello"}
@@ -516,15 +491,16 @@ Get all entries from a specific dictionary.
 
 #### `import_dictionary`
 
-Import dictionary entries from a protocol message. This creates a new dictionary or updates an existing one. For `.py` paths a plover-compatible Python dictionary file is generated (with `DICTIONARY`, `LONGEST_KEY`, `lookup`, and `reverse_lookup`).
+Import a dictionary from a protocol message. This creates a new dictionary or updates an existing one. The dictionary type must be explicitly specified.
 
-**Request:**
+**For JSON dictionaries:**
 ```json
 {
   "id": "8",
   "method": "import_dictionary",
   "params": {
-    "path": "my-dictionary.json",
+    "name": "my-dictionary",
+    "type": "json",
     "data": {
       "TEFT": "test",
       "-G": "{^ing}",
@@ -535,30 +511,59 @@ Import dictionary entries from a protocol message. This creates a new dictionary
 }
 ```
 
-Parameters:
-- `path` (string, required): Identifier for the dictionary
-- `data` (object, required): Dictionary entries as stroke -> translation mapping
-- `merge` (boolean, optional): If true, merge with existing entries. If false (default), replace all entries.
+**For Python dictionaries:**
+```json
+{
+  "id": "8",
+  "method": "import_dictionary",
+  "params": {
+    "name": "my-python-dict",
+    "type": "python",
+    "pythonCode": "LONGEST_KEY = 1\n\nDICTIONARY = {('TEFT',): 'test'}\n\ndef lookup(key):\n    if key in DICTIONARY:\n        return DICTIONARY[key]\n    raise KeyError(key)\n"
+  }
+}
+```
 
-**Response:**
+Parameters:
+- `name` (string, required): Identifier for the dictionary
+- `type` (string, required): Must be `"json"` or `"python"`
+- `data` (object, required for JSON): Dictionary entries as stroke -> translation mapping
+- `pythonCode` (string, required for Python): Python source code implementing the dictionary
+- `merge` (boolean, optional, JSON only): If true, merge with existing entries. If false (default), replace all entries.
+
+**Response (JSON dictionary):**
 ```json
 {
   "id": "8",
   "result": {
     "status": "ok",
-    "path": "my-dictionary.json",
+    "name": "my-dictionary",
+    "type": "json",
     "entries": 3
   }
 }
 ```
 
+**Response (Python dictionary):**
+```json
+{
+  "id": "8",
+  "result": {
+    "status": "ok",
+    "name": "my-python-dict",
+    "type": "python",
+    "entries": 1
+  }
+}
+```
+
 Importing automatically loads the dictionary into the active stack.
-- For `.py` paths the engine rebuilds the on-disk Python file, reloads it into the sandbox, and keeps Python dictionaries read-only at runtime.
-- If `merge` is `true`, existing entries are combined with the incoming data before being written.
+- Python dictionaries are read-only at runtime.
+- Merge is not supported for Python dictionaries since they store code, not entries.
 
 #### `export_dictionary`
 
-Export all entries from a dictionary as a protocol message. Python dictionaries are exported by enumerating the `DICTIONARY` mapping if present.
+Export a dictionary as a protocol message.
 
 **Request:**
 ```json
@@ -566,19 +571,19 @@ Export all entries from a dictionary as a protocol message. Python dictionaries 
   "id": "9",
   "method": "export_dictionary",
   "params": {
-    "path": "my-dictionary.json"
+    "name": "my-dictionary"
   }
 }
 ```
 
-**Response:**
+**Response (JSON dictionary):**
 ```json
 {
   "id": "9",
   "result": {
     "status": "ok",
-    "path": "my-dictionary.json",
-    "format": "json",
+    "name": "my-dictionary",
+    "type": "json",
     "data": {
       "TEFT": "test",
       "-G": "{^ing}",
@@ -588,7 +593,22 @@ Export all entries from a dictionary as a protocol message. Python dictionaries 
 }
 ```
 
+**Response (Python dictionary):**
+```json
+{
+  "id": "9",
+  "result": {
+    "status": "ok",
+    "name": "my-python-dict",
+    "type": "python",
+    "pythonCode": "LONGEST_KEY = 1\n\nDICTIONARY = {('TEFT',): 'test'}\n..."
+  }
+}
+```
+
 ### Entry CRUD Operations
+
+Entry operations are only available for JSON dictionaries. Python dictionaries are read-only.
 
 #### `add_entry`
 
@@ -602,12 +622,12 @@ Add an entry to a dictionary.
   "params": {
     "stroke": "TEFT",
     "translation": "test",
-    "path": "/path/to/dictionary.json"
+    "name": "my-dictionary"
   }
 }
 ```
 
-The `path` parameter is optional. If not specified, the entry is added to the first writable dictionary.
+The `name` parameter is optional. If not specified, the entry is added to the first writable dictionary.
 
 **Response:**
 ```json
@@ -632,12 +652,12 @@ Remove an entry from a dictionary.
   "method": "remove_entry",
   "params": {
     "stroke": "TEFT",
-    "path": "/path/to/dictionary.json"
+    "name": "my-dictionary"
   }
 }
 ```
 
-The `path` parameter is optional. If not specified, the entry is removed from the first dictionary that contains it.
+The `name` parameter is optional. If not specified, the entry is removed from the first dictionary that contains it.
 
 **Response:**
 ```json
@@ -662,12 +682,12 @@ Update an existing entry in a dictionary.
   "params": {
     "stroke": "TEFT",
     "translation": "testing",
-    "path": "/path/to/dictionary.json"
+    "name": "my-dictionary"
   }
 }
 ```
 
-The `path` parameter is optional. If not specified, the entry is updated in the first dictionary that contains it.
+The `name` parameter is optional. If not specified, the entry is updated in the first dictionary that contains it.
 
 **Response:**
 ```json

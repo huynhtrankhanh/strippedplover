@@ -1,43 +1,19 @@
-import { describe, expect, it, afterAll } from 'vitest';
-import { writeFileSync, unlinkSync, existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
+import { describe, expect, it } from 'vitest';
 import { PythonDictionary } from './python-dictionary.js';
 
 /**
- * Tests for Python dictionary loader using the plover-python-dictionary format.
+ * Tests for Python dictionary using the plover-python-dictionary format.
  * 
  * The plover-python-dictionary format requires:
  * - LONGEST_KEY: int - Maximum number of strokes
  * - lookup(key: tuple) -> str - Returns translation or raises KeyError
  * - reverse_lookup(value: str) -> list - Optional, returns stroke tuples
+ * 
+ * Python dictionaries are now loaded from code strings, not files.
  */
-describe('python dictionary loader (plover-python-dictionary format)', () => {
-  const tempFiles: string[] = [];
-
-  // Clean up temp files after tests
-  afterAll(() => {
-    for (const file of tempFiles) {
-      if (existsSync(file)) {
-        try {
-          unlinkSync(file);
-        } catch {
-          // ignore cleanup errors
-        }
-      }
-    }
-  });
-
-  function createTempPythonDict(content: string): string {
-    const dir = tmpdir();
-    const file = path.join(dir, `dict-${Date.now()}-${Math.random().toString(36).slice(2)}.py`);
-    writeFileSync(file, content, 'utf-8');
-    tempFiles.push(file);
-    return file;
-  }
-
+describe('python dictionary (plover-python-dictionary format)', () => {
   it('loads a simple dictionary with lookup function', async () => {
-    const file = createTempPythonDict(`
+    const code = `
 LONGEST_KEY = 1
 
 DICTIONARY = {
@@ -52,9 +28,9 @@ def lookup(key):
 
 def reverse_lookup(value):
     return [k for k, v in DICTIONARY.items() if v == value]
-`);
+`;
 
-    const dict = await PythonDictionary.load(file);
+    const dict = await PythonDictionary.loadFromCode('test-dict', code);
     expect(dict.longestKey).toBe(1);
     
     // Test async lookups
@@ -62,11 +38,14 @@ def reverse_lookup(value):
     expect(await dict.get(['HELO'])).toBe('hello');
     expect(await dict.get(['NONEXISTENT'])).toBeNull();
     
+    // Verify pythonCode is stored
+    expect(dict.pythonCode).toBe(code);
+    
     dict.terminate();
   }, 30000);
 
   it('loads dictionary with multi-stroke entries', async () => {
-    const file = createTempPythonDict(`
+    const code = `
 LONGEST_KEY = 3
 
 DICTIONARY = {
@@ -79,9 +58,9 @@ def lookup(key):
     if key in DICTIONARY:
         return DICTIONARY[key]
     raise KeyError(key)
-`);
+`;
 
-    const dict = await PythonDictionary.load(file);
+    const dict = await PythonDictionary.loadFromCode('multi-stroke-dict', code);
     expect(dict.longestKey).toBe(3);
     
     expect(await dict.get(['TEFT'])).toBe('test');
@@ -95,7 +74,7 @@ def lookup(key):
   }, 30000);
 
   it('maintains isolated state between dictionary instances', async () => {
-    const file1 = createTempPythonDict(`
+    const code1 = `
 LONGEST_KEY = 1
 
 DICTIONARY = {('FIRST',): 'first dictionary'}
@@ -104,9 +83,9 @@ def lookup(key):
     if key in DICTIONARY:
         return DICTIONARY[key]
     raise KeyError(key)
-`);
+`;
 
-    const file2 = createTempPythonDict(`
+    const code2 = `
 LONGEST_KEY = 2
 
 DICTIONARY = {
@@ -118,10 +97,10 @@ def lookup(key):
     if key in DICTIONARY:
         return DICTIONARY[key]
     raise KeyError(key)
-`);
+`;
 
-    const dict1 = await PythonDictionary.load(file1);
-    const dict2 = await PythonDictionary.load(file2);
+    const dict1 = await PythonDictionary.loadFromCode('dict1', code1);
+    const dict2 = await PythonDictionary.loadFromCode('dict2', code2);
 
     // Verify independent state
     expect(dict1.longestKey).toBe(1);
@@ -140,7 +119,7 @@ def lookup(key):
   }, 60000);
 
   it('performs reverse lookup correctly', async () => {
-    const file = createTempPythonDict(`
+    const code = `
 LONGEST_KEY = 2
 
 DICTIONARY = {
@@ -156,9 +135,9 @@ def lookup(key):
 
 def reverse_lookup(value):
     return [k for k, v in DICTIONARY.items() if v == value]
-`);
+`;
 
-    const dict = await PythonDictionary.load(file);
+    const dict = await PythonDictionary.loadFromCode('reverse-dict', code);
     
     // Reverse lookup for 'test' should return both stroke sequences
     const testResults = await dict.reverseLookup('test');
@@ -176,16 +155,16 @@ def reverse_lookup(value):
   }, 30000);
 
   it('throws appropriate errors for mutating operations', async () => {
-    const file = createTempPythonDict(`
+    const code = `
 LONGEST_KEY = 1
 
 def lookup(key):
     if key == ('TEFT',):
         return 'test'
     raise KeyError(key)
-`);
+`;
 
-    const dict = await PythonDictionary.load(file);
+    const dict = await PythonDictionary.loadFromCode('readonly-dict', code);
     
     expect(() => dict.set(['NEW'], 'value')).toThrow('read-only');
     expect(() => dict.delete(['TEFT'])).toThrow('read-only');
@@ -196,25 +175,25 @@ def lookup(key):
   }, 30000);
 
   it('validates LONGEST_KEY is required', async () => {
-    const file = createTempPythonDict(`
+    const code = `
 def lookup(key):
     return 'test'
-`);
+`;
 
-    await expect(PythonDictionary.load(file)).rejects.toThrow('LONGEST_KEY');
+    await expect(PythonDictionary.loadFromCode('no-longest-key', code)).rejects.toThrow('LONGEST_KEY');
   }, 30000);
 
   it('validates lookup function is required', async () => {
-    const file = createTempPythonDict(`
+    const code = `
 LONGEST_KEY = 1
 # No lookup function defined
-`);
+`;
 
-    await expect(PythonDictionary.load(file)).rejects.toThrow('lookup');
+    await expect(PythonDictionary.loadFromCode('no-lookup', code)).rejects.toThrow('lookup');
   }, 30000);
 
   it('handles has correctly', async () => {
-    const file = createTempPythonDict(`
+    const code = `
 LONGEST_KEY = 2
 
 DICTIONARY = {
@@ -226,9 +205,9 @@ def lookup(key):
     if key in DICTIONARY:
         return DICTIONARY[key]
     raise KeyError(key)
-`);
+`;
 
-    const dict = await PythonDictionary.load(file);
+    const dict = await PythonDictionary.loadFromCode('has-dict', code);
     
     expect(await dict.has(['EXISTS'])).toBe(true);
     expect(await dict.has(['MULTI', 'STROKE'])).toBe(true);
@@ -239,7 +218,7 @@ def lookup(key):
   }, 30000);
 
   it('enumerates DICTIONARY entries for export', async () => {
-    const file = createTempPythonDict(`
+    const code = `
 LONGEST_KEY = 2
 
 DICTIONARY = {
@@ -251,9 +230,9 @@ def lookup(key):
     if key in DICTIONARY:
         return DICTIONARY[key]
     raise KeyError(key)
-`);
+`;
 
-    const dict = await PythonDictionary.load(file);
+    const dict = await PythonDictionary.loadFromCode('export-dict', code);
 
     expect(dict.length).toBe(2);
     const items = dict.items();
