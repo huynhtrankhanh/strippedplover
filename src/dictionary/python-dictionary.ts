@@ -1,197 +1,73 @@
-import { readFileSync } from 'node:fs';
-import { StenoDictionaryLike } from './steno-dictionary.js';
-// Use vendored python-wasm with sandboxed POSIX operations
-import { asyncPython, PythonWasmAsync } from '../../vendor/python-wasm/dist/node.js';
+import { StenoDictionary, StenoDictionaryLike } from './steno-dictionary.js';
+import { normalizeSteno } from '../stroke.js';
 
-type PythonRuntime = PythonWasmAsync;
+type PythonDictionaryInput = Record<string, string> | Array<[string[], string]>;
 
 /**
- * Python Dictionary implementation compatible with plover-python-dictionary format.
- * 
- * The plover-python-dictionary format expects:
- * - LONGEST_KEY: int - Maximum number of strokes in any entry
- * - lookup(key: tuple[str, ...]) -> str - Function that returns translation or raises KeyError
- * - reverse_lookup(value: str) -> list[tuple[str, ...]] - Optional function for reverse lookup
- * 
- * We use asyncPython for non-blocking lookups.
+ * PythonDictionary is now a thin SQLite-backed wrapper that keeps parity with
+ * the StenoDictionaryLike interface while remaining read-only.
  */
 export class PythonDictionary implements StenoDictionaryLike {
-  private _path: string;
-  private _py: PythonRuntime | null = null;
-  private _longestKey = 0;
-  private _hasReverseLookup = false;
-  private _entries: Array<[string[], string]> = [];
-  private _length = -1;
+  private store: StenoDictionary;
   readonly = true;
   enabled: boolean;
 
-  private constructor(path: string, enabled = true) {
-    this._path = path;
+  private constructor(store: StenoDictionary, enabled = true) {
+    this.store = store;
     this.enabled = enabled;
+    this.store.readonly = true;
   }
 
-  static async load(path: string): Promise<PythonDictionary> {
-    const dict = new PythonDictionary(path);
-    await dict.loadFromPython(path);
-    return dict;
+  /**
+   * Create a PythonDictionary from raw entries without touching the filesystem.
+   */
+  static fromData(data: PythonDictionaryInput, options: { path?: string; enabled?: boolean } = {}): PythonDictionary {
+    const path = options.path ?? ':memory:';
+    const enabled = options.enabled ?? true;
+    const dict = new StenoDictionary({ path, readonly: false, enabled });
+
+    const entries: Array<[string[], string]> = Array.isArray(data)
+      ? data
+      : Object.entries(data).map(([stroke, translation]) => [normalizeSteno(stroke, false), translation]);
+
+    if (entries.length > 0) {
+      dict.update(entries);
+    }
+
+    dict.readonly = true;
+
+    return new PythonDictionary(dict, enabled);
   }
 
-  private async loadFromPython(path: string): Promise<void> {
-    // Use python-wasm (CPython) with full filesystem for proper stdlib support
-    const py: PythonRuntime = await asyncPython({
-      fs: 'everything',
-    });
-
-    // Set up sandboxing to block dangerous modules and add helper functions
-    await py.exec(
-      [
-        'import sys, builtins',
-        'class __SpBlocker:',
-        "    def find_spec(self, fullname, path=None, target=None):",
-        "        if fullname in ('js', '_js') or fullname.startswith('js.'):",
-        "            raise ImportError('js disabled')",
-        "        if fullname in ('subprocess', 'socket', 'http', 'urllib', 'ftplib', 'smtplib', 'telnetlib'):",
-        "            raise ImportError('restricted module')",
-        "        return None",
-        'sys.meta_path.insert(0, __SpBlocker())',
-        'for mod in ("js","_js","subprocess","socket"):',
-        '    sys.modules.pop(mod, None)',
-      ].join('\n')
-    );
-
-    // Load the dictionary module content
-    const content = readFileSync(path, 'utf-8');
-    await py.exec(content);
-
-    // Add safe lookup helper function
-    await py.exec(`
-def __safe_lookup(key):
-    try:
-        return lookup(key)
-    except KeyError:
-        return None
-    except Exception:
-        return None
-
-def __safe_reverse_lookup(value):
-    try:
-        if 'reverse_lookup' in globals():
-            return list(reverse_lookup(value))
-        return []
-    except Exception:
-        return []
-`);
-
-    // Validate LONGEST_KEY exists and is valid
-    const hasLongestKey = await py.repr("'LONGEST_KEY' in dir()");
-    if (hasLongestKey.trim() !== 'True') {
-      throw new Error('Invalid or missing LONGEST_KEY in python dictionary');
-    }
-    const longestRaw = await py.repr('int(LONGEST_KEY)');
-    const pythonLongest = Number.parseInt(String(longestRaw).replace(/[^0-9-]/g, ''), 10);
-    if (!Number.isFinite(pythonLongest) || pythonLongest <= 0) {
-      throw new Error('Invalid or missing LONGEST_KEY in python dictionary');
-    }
-    this._longestKey = pythonLongest;
-
-    // Validate lookup function exists
-    const hasLookup = await py.repr('callable(lookup) if "lookup" in dir() else False');
-    if (hasLookup.trim() !== 'True') {
-      throw new Error('Missing or invalid `lookup` function in python dictionary');
-    }
-
-    // Check if reverse_lookup function exists
-    const hasReverse = await py.repr('callable(reverse_lookup) if "reverse_lookup" in dir() else False');
-    this._hasReverseLookup = hasReverse.trim() === 'True';
-
-    const hasDict = await py.repr("'DICTIONARY' in dir()");
-    if (hasDict.trim() === 'True') {
-      try {
-        const raw = await py.repr(
-          "__import__('json').dumps([[list(k), v] for k, v in DICTIONARY.items() if isinstance(k, tuple) and isinstance(v, str)])"
-        );
-        const trimmed = String(raw).trim().replace(/^'|'$/g, '');
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) {
-          this._entries = parsed.filter(
-            (item): item is [string[], string] =>
-              Array.isArray(item) && Array.isArray(item[0]) && typeof item[1] === 'string'
-          );
-          this._length = this._entries.length;
-          if (this._entries.length > 0) {
-            const maxLen = Math.max(...this._entries.map(([s]) => s.length));
-            if (maxLen > this._longestKey) {
-              this._longestKey = maxLen;
-            }
-          }
-        }
-      } catch {
-        // Ignore enumeration errors; keep dictionary usable for lookups.
-      }
-    }
-
-    // Keep the Python runtime alive for lookups
-    this._py = py;
+  /**
+   * Async alias for fromData to preserve previous API shape.
+   */
+  static async load(data: PythonDictionaryInput, options?: { path?: string; enabled?: boolean }): Promise<PythonDictionary> {
+    return PythonDictionary.fromData(data, options);
   }
 
   get path(): string {
-    return this._path;
+    return this.store.path;
   }
 
   set path(value: string) {
-    this._path = value;
+    this.store.path = value;
   }
 
   get longestKey(): number {
-    return this._longestKey;
+    return this.store.longestKey;
   }
 
-  /**
-   * For Python dictionaries with dynamic lookup, we don't know the length.
-   * Return -1 to indicate unknown size.
-   */
   get length(): number {
-    return this._length >= 0 ? this._length : -1;
+    return this.store.length;
   }
 
-  /**
-   * Async lookup that calls the Python lookup function.
-   */
-  async get(strokeTuple: string[]): Promise<string | null> {
-    if (!this._py) {
-      return null;
-    }
-    if (strokeTuple.length > this._longestKey) {
-      return null;
-    }
-
-    try {
-      // Build Python tuple from stroke array - escape backslashes first, then single quotes
-      const tupleStr = `(${strokeTuple.map(s => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`).join(', ')}${strokeTuple.length === 1 ? ',' : ''})`;
-      
-      const result = await this._py.repr(`__safe_lookup(${tupleStr})`);
-      
-      const trimmed = result.trim();
-      if (trimmed && trimmed !== 'None') {
-        // Remove surrounding quotes if present
-        if ((trimmed.startsWith("'") && trimmed.endsWith("'")) ||
-            (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
-          return trimmed.slice(1, -1);
-        }
-        return trimmed;
-      }
-      return null;
-    } catch {
-      return null;
-    }
+  get(strokeTuple: string[]): string | null {
+    return this.store.get(strokeTuple);
   }
 
-  /**
-   * Async check if stroke tuple exists in dictionary.
-   */
   async has(strokeTuple: string[]): Promise<boolean> {
-    const result = await this.get(strokeTuple);
-    return result !== null;
+    return this.store.has(strokeTuple);
   }
 
   set(_strokeTuple: string[], _translation: string): void {
@@ -210,68 +86,26 @@ def __safe_reverse_lookup(value):
     throw new Error('Unsupported operation: Python dictionary is read-only');
   }
 
-  /**
-   * For Python dictionaries with dynamic lookup, we cannot iterate entries.
-   */
   *entries(): Generator<[string[], string]> {
-    if (this._entries.length === 0) return;
-    for (const entry of this._entries) {
-      yield [entry[0], entry[1]];
-    }
+    yield* this.store.entries();
   }
 
   items(): Array<[string[], string]> {
-    return [...this._entries];
+    return this.store.items();
   }
 
-  /**
-   * Async reverse lookup that calls the Python reverse_lookup function if available.
-   */
   async reverseLookup(translation: string): Promise<Set<string[]>> {
-    if (this._entries.length > 0 && !this._hasReverseLookup) {
-      return new Set(this._entries.filter(([, value]) => value === translation).map(([stroke]) => stroke));
-    }
-
-    if (!this._py || !this._hasReverseLookup) {
-      return new Set();
-    }
-
-    try {
-      const escapedTranslation = translation.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-      
-      // Use exec to set up the result, then repr to get it
-      await this._py.exec(`import json; __reverse_result = json.dumps([list(s) for s in __safe_reverse_lookup('${escapedTranslation}')])`);
-      const result = await this._py.repr('__reverse_result');
-
-      const trimmed = result.trim();
-      if (trimmed && trimmed !== "'[]'" && trimmed !== '[]') {
-        try {
-          const parsed = JSON.parse(trimmed.replace(/^'|'$/g, ''));
-          if (Array.isArray(parsed)) {
-            return new Set(parsed.filter(Array.isArray));
-          }
-        } catch {
-          // ignore parse errors
-        }
-      }
-      return new Set();
-    } catch {
-      return new Set();
-    }
+    return this.store.reverseLookup(translation);
   }
 
-  caseReverseLookup(_translation: string): Set<string> {
-    // Not supported for dynamic Python dictionaries
-    return new Set();
+  caseReverseLookup(translation: string): Set<string> {
+    return this.store.caseReverseLookup(translation);
   }
 
   /**
-   * Terminate the Python runtime when done.
+   * No-op for compatibility with previous API.
    */
   terminate(): void {
-    if (this._py) {
-      this._py.terminate();
-      this._py = null;
-    }
+    // Nothing to clean up when using SQLite-backed storage.
   }
 }

@@ -254,7 +254,7 @@ Dictionary path matching is suffix-based for prioritization and enable/disable o
 
 #### `add_dictionary`
 
-Add a dictionary file to the engine.
+Add a SQLite-backed dictionary to the engine without reading from the filesystem.
 
 **Request:**
 ```json
@@ -516,7 +516,7 @@ Get all entries from a specific dictionary.
 
 #### `import_dictionary`
 
-Import dictionary entries from a protocol message. This creates a new dictionary or updates an existing one. For `.py` paths a plover-compatible Python dictionary file is generated (with `DICTIONARY`, `LONGEST_KEY`, `lookup`, and `reverse_lookup`).
+Import dictionary entries from a protocol message. This creates a new dictionary or updates an existing one. Both `.json` and `.py` paths are stored inside SQLite; no helper files are written.
 
 **Request:**
 ```json

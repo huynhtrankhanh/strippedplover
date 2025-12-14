@@ -5,7 +5,7 @@
  */
 
 import { Stroke, normalizeSteno } from './stroke.js';
-import { StenoDictionary, StenoDictionaryCollection, StenoDictionaryLike, loadDictionary, saveDictionaryToPython, loadPythonDictionaryEntries, PythonDictionary } from './dictionary/index.js';
+import { StenoDictionary, StenoDictionaryCollection, StenoDictionaryLike, loadDictionary } from './dictionary/index.js';
 import { Translator, Translation } from './translation.js';
 import { Formatter, Action, Case } from './formatting.js';
 import * as system from './system/index.js';
@@ -604,12 +604,16 @@ export class StrippedPlover {
   }
 
   private async addDictionary(params: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const path = params.path as string;
+    const { path, data, format } = params as {
+      path?: string;
+      data?: Record<string, string>;
+      format?: 'json' | 'python';
+    };
     if (!path) {
       throw new Error('Dictionary path is required');
     }
 
-    const dictionary = await loadDictionary(path);
+    const dictionary = await loadDictionary({ path, data, format });
     const dicts = [...this.dictionaries.dicts, dictionary];
     this.dictionaries.setDicts(dicts);
 
@@ -827,6 +831,7 @@ export class StrippedPlover {
     const path = params.path as string;
     const data = params.data as Record<string, string>;
     const merge = params.merge as boolean ?? false;
+    const format = (params.format as 'python' | 'json' | undefined) ?? (path?.toLowerCase().endsWith('.py') ? 'python' : 'json');
 
     if (!path) {
       throw new Error('Dictionary path is required');
@@ -834,72 +839,59 @@ export class StrippedPlover {
     if (!data || typeof data !== 'object') {
       throw new Error('Dictionary data is required');
     }
-    const isPython = path.toLowerCase().endsWith('.py');
 
-    if (isPython) {
-      const incoming: Array<[string[], string]> = [];
-      for (const [stroke, translation] of Object.entries(data)) {
-        incoming.push([normalizeSteno(stroke, false), translation]);
-      }
+    const existing = this.dictionaries.get(path);
+    const incomingEntries = Object.entries(data).map(([stroke, translation]) => [normalizeSteno(stroke, false), translation] as [string[], string]);
 
-      let entries = incoming;
+    if (format === 'python') {
+      const base = existing?.items?.() ?? [];
+      const merged = new Map<string, [string[], string]>();
       if (merge) {
-        const existing = await loadPythonDictionaryEntries(path);
-        const merged = new Map(existing.map(([stroke, translation]) => [stroke.join('/'), [stroke, translation] as [string[], string]]));
-        for (const [stroke, translation] of incoming) {
-          merged.set(stroke.join('/'), [stroke, translation]);
+        for (const [strokeTuple, translation] of base) {
+          merged.set(strokeTuple.join('/'), [strokeTuple, translation]);
         }
-        entries = [...merged.values()];
+      }
+      for (const [stroke, translation] of incomingEntries) {
+        merged.set(stroke.join('/'), [stroke, translation]);
       }
 
-      saveDictionaryToPython(entries, path);
+      const replacement = await loadDictionary({
+        path,
+        format: 'python',
+        data: Object.fromEntries([...merged.values()].map(([stroke, translation]) => [stroke.join('/'), translation])),
+      });
 
-      let dictionary = this.dictionaries.get(path);
-      const loaded = await loadDictionary(path);
-      if (!dictionary) {
-        this.dictionaries.setDicts([...this.dictionaries.dicts, loaded]);
-      } else {
-        if (dictionary instanceof PythonDictionary) {
-          dictionary.terminate();
-        }
-        const updated = this.dictionaries.dicts.map(d => (d.path === path ? loaded : d));
-        this.dictionaries.setDicts(updated);
-      }
+      const dicts = existing
+        ? this.dictionaries.dicts.map(d => (d.path === path ? replacement : d))
+        : [...this.dictionaries.dicts, replacement];
+      this.dictionaries.setDicts(dicts);
 
       return {
         status: 'ok',
         path,
-        entries: entries.length,
-      };
-    } else {
-      let dictionary = this.dictionaries.get(path);
-      
-      if (!dictionary) {
-        // Create a new dictionary
-        dictionary = new StenoDictionary({ path });
-        const dicts = [...this.dictionaries.dicts, dictionary];
-        this.dictionaries.setDicts(dicts);
-      } else if (dictionary.readonly) {
-        throw new Error(`Dictionary is read-only: ${path}`);
-      }
-
-      if (!merge) {
-        dictionary.clear();
-      }
-
-      // Import entries
-      const entries: Array<[string[], string]> = [];
-      for (const [stroke, translation] of Object.entries(data)) {
-        const strokeTuple = normalizeSteno(stroke, false);
-        entries.push([strokeTuple, translation]);
-      }
-      dictionary.update(entries);
-
-      return {
-        status: 'ok',
-        path,
-        entries: dictionary.length,
+        entries: replacement.length,
       };
     }
+
+    // JSON / standard dictionaries mutate in-place
+    let dictionary = existing;
+    if (!dictionary) {
+      dictionary = new StenoDictionary({ path });
+      this.dictionaries.setDicts([...this.dictionaries.dicts, dictionary]);
+    } else if (dictionary.readonly) {
+      throw new Error(`Dictionary is read-only: ${path}`);
+    }
+
+    if (!merge) {
+      dictionary.clear();
+    }
+
+    dictionary.update(incomingEntries);
+
+    return {
+      status: 'ok',
+      path,
+      entries: dictionary.length,
+    };
   }
 }

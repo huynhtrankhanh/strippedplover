@@ -48,7 +48,7 @@ See [PROTOCOL.md](PROTOCOL.md) for complete protocol documentation.
 |--------|-------------|
 | `translate` | Translate a stroke, returns updated preedit |
 | `reset_state` | Reset translation state |
-| `add_dictionary` | Load a dictionary from file |
+| `add_dictionary` | Register a SQLite-backed dictionary |
 | `remove_dictionary` | Unload a dictionary |
 | `prioritize_dictionaries` | Move selected dictionaries to the top of the stack |
 | `set_dictionary_enabled` | Enable or disable a specific dictionary |
@@ -72,7 +72,7 @@ Dictionaries can be imported and exported via protocol messages:
 {"id": "2", "method": "export_dictionary", "params": {"path": "my.json"}}
 // Response includes: {"result": {"data": {"TEFT": "test"}, ...}}
 
-// Python dictionaries are supported too (a .py file is generated with DICTIONARY, LONGEST_KEY, lookup, reverse_lookup):
+// Python dictionaries are stored alongside JSON dictionaries inside SQLite:
 {"id": "3", "method": "import_dictionary", "params": {"path": "custom.py", "data": {"TEFT": "test"}}}
 {"id": "4", "method": "export_dictionary", "params": {"path": "custom.py"}}
 ```
