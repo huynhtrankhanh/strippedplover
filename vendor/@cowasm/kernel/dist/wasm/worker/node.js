@@ -18,8 +18,21 @@ const worker_threads_1 = require("worker_threads");
 const init_1 = __importDefault(require("./init"));
 const debug_1 = __importDefault(require("debug"));
 const os_1 = __importDefault(require("os"));
-const child_process_1 = __importDefault(require("child_process"));
+// SANDBOXED: child_process removed to prevent arbitrary command execution
+// const child_process_1 = __importDefault(require("child_process"));
 const posix_node_1 = __importDefault(require("posix-node"));
+// SANDBOXED: Create a restricted posix object with only safe operations
+const sandboxed_posix = {
+    // Only allow sleep operations - these are safe and needed for the runtime
+    sleep: posix_node_1.default.sleep,
+    usleep: posix_node_1.default.usleep,
+    // Safe constants needed for various operations
+    constants: posix_node_1.default.constants,
+    // Block all dangerous operations by not including them:
+    // - fork, vfork, exec*, fexecve (process creation/execution)
+    // - pipe, pipe2 (subprocess IPC)
+    // - All other posix operations that could escape sandbox
+};
 const io_using_atomics_1 = __importDefault(require("./io-using-atomics"));
 const log = (0, debug_1.default)("wasm:worker");
 async function wasmImportNode(name, options) {
@@ -78,10 +91,10 @@ async function wasmImportNode(name, options) {
         const mod = new WebAssembly.Module(binary);
         return new WebAssembly.Instance(mod, opts);
     }
-    if (options.sleep == null && posix_node_1.default.sleep != null && posix_node_1.default.usleep != null) {
+    if (options.sleep == null && sandboxed_posix.sleep != null && sandboxed_posix.usleep != null) {
         // don't have sleep support (since single thread), and we can provide
         // that via posix and not burn 100% cpu.
-        const { sleep, usleep } = posix_node_1.default;
+        const { sleep, usleep } = sandboxed_posix;
         options.sleep = (milliseconds) => {
             const seconds = Math.floor(milliseconds / 1000);
             if (seconds > 0) {
@@ -95,7 +108,8 @@ async function wasmImportNode(name, options) {
     }
     return await (0, import_1.default)({
         source: name,
-        bindings: { ...node_1.default, fs, os: os_1.default, child_process: child_process_1.default, posix: posix_node_1.default },
+        // SANDBOXED: child_process removed, posix replaced with sandboxed version
+        bindings: { ...node_1.default, fs, os: os_1.default, child_process: {}, posix: sandboxed_posix },
         options,
         importWebAssembly,
         importWebAssemblySync,

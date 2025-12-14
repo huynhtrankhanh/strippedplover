@@ -235,30 +235,18 @@ function unistd(context) {
         tcsetpgrp: () => {
             (0, util_1.notImplemented)("tcsetpgrp");
         },
+        // SANDBOXED: fork, vfork removed - process creation is not allowed
         fork: () => {
-            if (posix.fork == null) {
-                (0, util_1.notImplemented)("fork");
-            }
-            const pid = posix.fork();
-            if (pid == 0) {
-                // we end the event loop in the child, because hopefully usually anything
-                // that is using fork is about to exec* anyways.  It seems that trying
-                // to actually use the Node.js event loop after forking tends to randomly
-                // hang, so isn't really viable.
-                posix.close_event_loop?.();
-            }
-            return pid;
+            (0, util_1.notImplemented)("fork: sandbox restricted");
         },
         fork1: () => {
-            (0, util_1.notImplemented)("fork1");
+            (0, util_1.notImplemented)("fork1: sandbox restricted");
         },
         vfork: () => {
-            // "this system call behaves identically to the fork(2) system call, except without
-            // calling any handlers registered with pthread_atfork(2)."
-            return unistd.fork();
+            (0, util_1.notImplemented)("vfork: sandbox restricted");
         },
         forkpty: () => {
-            (0, util_1.notImplemented)("forkpty");
+            (0, util_1.notImplemented)("forkpty: sandbox restricted");
         },
         getlogin: () => {
             if (context.state.getlogin_ptr != null)
@@ -358,104 +346,31 @@ function unistd(context) {
             }
             return 0;
         },
+        // SANDBOXED: All exec* functions removed - command execution is not allowed
         // int execve(const char *pathname, char *const argv[], char *const envp[]);
         execve: (pathnamePtr, argvPtr, envpPtr) => {
-            if (posix._execve == null) {
-                (0, util_1.notImplemented)("execve");
-            }
-            const pathname = recv.string(pathnamePtr);
-            const argv = recv.arrayOfStrings(argvPtr);
-            const envp = recv.arrayOfStrings(envpPtr);
-            log("execve", pathname, argv, envp);
-            posix._execve(pathname, argv, envp);
-            return 0; // this won't happen because execve takes over, or there's an error
+            (0, util_1.notImplemented)("execve: sandbox restricted");
         },
         execv: (pathnamePtr, argvPtr) => {
-            if (posix.execv == null) {
-                (0, util_1.notImplemented)("execv");
-            }
-            const pathname = recv.string(pathnamePtr);
-            const argv = recv.arrayOfStrings(argvPtr);
-            log("execv", pathname, argv);
-            posix.execv(pathname, argv);
-            return 0; // this won't happen because execv takes over
+            (0, util_1.notImplemented)("execv: sandbox restricted");
         },
-        // execvp is like execv but takes the filename rather than the path.
         // int execvp(const char *file, char *const argv[]);
         execvp: (filePtr, argvPtr) => {
-            if (posix.execvp == null) {
-                (0, util_1.notImplemented)("execvp");
-            }
-            const file = recv.string(filePtr);
-            const argv = recv.arrayOfStrings(argvPtr);
-            log("execvp", file, argv);
-            posix.execvp(file, argv);
-            return 0; // this won't happen because execvp takes over
+            (0, util_1.notImplemented)("execvp: sandbox restricted");
         },
-        // execlp is so far only by libedit to launch vim to edit
-        // the history.  So it's safe to just disable.  Python doesn't
-        // use this at all.
         execlp: () => {
-            (0, util_1.notImplemented)("execlp");
+            (0, util_1.notImplemented)("execlp: sandbox restricted");
         },
-        /*
-        I don't have automated testing for this, since it quits node.
-        However, here is what works on Linux. There is no fexecve on macos.
-        >>> import os; a = os.open("/bin/ls",os.O_RDONLY | os.O_CREAT)
-        >>> os.execve(a,['-l','/'],{})
-        bin   dev  home  media  opt   root  sbin  sys  usr
-        boot  etc  lib   mnt    proc  run   srv   tmp  var
-        */
         fexecve: (fd, argvPtr, envpPtr) => {
-            if (posix._fexecve == null) {
-                (0, util_1.notImplemented)("fexecve");
-            }
-            const argv = recv.arrayOfStrings(argvPtr);
-            const envp = recv.arrayOfStrings(envpPtr);
-            posix._fexecve(toNativeFd(fd), argv, envp);
-            return 0; // this won't happen because execve takes over
+            (0, util_1.notImplemented)("fexecve: sandbox restricted");
         },
+        // SANDBOXED: pipe functions removed - subprocess IPC is not allowed
         //  int pipe(int pipefd[2]);
         pipe: (pipefdPtr) => {
-            if (posix.pipe == null) {
-                (0, util_1.notImplemented)("pipe");
-            }
-            const { readfd, writefd } = posix.pipe();
-            // readfd and writefd are genuine native file descriptors that we just created.
-            const wasi_readfd = wasi.getUnusedFileDescriptor();
-            wasi.FD_MAP.set(wasi_readfd, {
-                real: readfd,
-                rights: STDIN.rights,
-                filetype: wasi_js_1.constants.WASI_FILETYPE_SOCKET_STREAM,
-            });
-            const wasi_writefd = wasi.getUnusedFileDescriptor();
-            wasi.FD_MAP.set(wasi_writefd, {
-                real: writefd,
-                rights: STDOUT.rights,
-                filetype: wasi_js_1.constants.WASI_FILETYPE_SOCKET_STREAM,
-            });
-            send.i32(pipefdPtr, wasi_readfd);
-            send.i32(pipefdPtr + 4, wasi_writefd);
-            return 0;
+            (0, util_1.notImplemented)("pipe: sandbox restricted");
         },
         pipe2: (pipefdPtr, flags) => {
-            if (posix.pipe2 == null) {
-                (0, util_1.notImplemented)("pipe2");
-            }
-            let nativeFlags = 0;
-            if (flags & constants_1.default.O_NONBLOCK) {
-                nativeFlags += posix.constants?.O_NONBLOCK ?? 0;
-            }
-            // NOTE: wasi defined O_CLOEXEC to be 0, which is super annoying.
-            // We thus never set it, since otherwise it would always get set.
-            /* if (flags & constants.O_CLOEXEC) {
-              nativeFlags += posix.constants?.O_CLOEXEC ?? 0;
-            }*/
-            const { readfd, writefd } = posix.pipe2(nativeFlags);
-            console.warn("pipe2 -- TODO: we almost certainly need to abstract these through our WASI fd object!");
-            send.i32(pipefdPtr, readfd);
-            send.i32(pipefdPtr + 4, writefd);
-            return 0;
+            (0, util_1.notImplemented)("pipe2: sandbox restricted");
         },
         lockf: (fd, cmd, size) => {
             const { lockf } = posix;

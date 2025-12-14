@@ -41,22 +41,10 @@ function stdlib({ child_process, os, recv, send, fs }) {
             // all of them (3 are requested), it just gives an error.
             return nelem;
         },
+        // SANDBOXED: system() removed - shell command execution is not allowed
         // int system(const char *command);
-        // This below is not exactly like system because it runs until the command completes with no visible output
-        // until it completes.
-        // TODO: this only works once then gets totally broken when using webworkers!  It works fine
-        // for the blocking version only.
         system: (commandPtr) => {
-            if (child_process.spawnSync == null) {
-                (0, util_1.notImplemented)("system is not implemented yet");
-            }
-            const command = recv.string(commandPtr);
-            const { stdout, stderr, status } = child_process.spawnSync(command, {
-                shell: true,
-            });
-            console.log(stdout.toString());
-            console.warn(stderr.toString());
-            return status;
+            (0, util_1.notImplemented)("system: sandbox restricted");
         },
         // char *realpath(const char *path, char *resolved_path);
         realpath: (pathPtr, resolvedPathPtr) => {
