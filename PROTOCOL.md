@@ -785,10 +785,10 @@ Stop the engine.
 ## Example Session
 
 ```
-$ python -m plover.stripped_plover
+$ node dist/index.js
 {"status": "ready"}
-{"id": "1", "method": "add_dictionary", "params": {"path": "main.json"}}
-{"id": "1", "result": {"status": "ok", "path": "main.json", "entries": 150000}}
+{"id": "1", "method": "import_dictionary", "params": {"name": "main", "type": "json", "data": {"TEFT": "test", "-G": "{^ing}"}}}
+{"id": "1", "result": {"status": "ok", "name": "main", "type": "json", "entries": 2}}
 {"id": "2", "method": "translate", "params": {"stroke": "TEFT"}}
 {"id": "2", "result": {"output": [{"type": "preedit", "text": "test"}]}}
 {"id": "3", "method": "translate", "params": {"stroke": "-G"}}

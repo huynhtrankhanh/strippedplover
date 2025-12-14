@@ -24,5 +24,11 @@ notes.md
 # macOS
 .DS_Store
 
+# Test dictionary files (SQLite)
+my-json-dict
+user-dict
+python-dict
+custom-python
+
 # vim: ft=cfg
 test.json
