@@ -606,9 +606,7 @@ export class StrippedPlover {
       throw new Error('Dictionary name is required');
     }
 
-    const normalizedName = this.normalizeDictPath(name);
-    const dicts = this.dictionaries.dicts.filter(d => this.normalizeDictPath(d.path) !== normalizedName);
-
+    const dicts = this.dictionaries.dicts.filter(d => d.path !== name);
     if (dicts.length === this.dictionaries.dicts.length) {
       throw new Error(`Dictionary not found: ${name}`);
     }

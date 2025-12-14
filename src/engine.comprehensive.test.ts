@@ -2,13 +2,29 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { StrippedPlover } from './engine.js';
 import { OutputElement } from './engine.js';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 
 describe('StrippedPlover Comprehensive Tests', () => {
   let engine: StrippedPlover;
+  let tempDir: string;
 
   beforeEach(() => {
     engine = new StrippedPlover();
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'plover-test-'));
   });
+
+  afterEach(() => {
+    // Clean up temp dir
+    if (tempDir) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  function getDictPath(name: string): string {
+      return path.join(tempDir, name);
+  }
 
   async function translate(stroke: string): Promise<string> {
     const res = await engine.handleRequest({
@@ -35,7 +51,7 @@ describe('StrippedPlover Comprehensive Tests', () => {
         id: 1,
         method: 'import_dictionary',
         params: {
-          name: 'main',
+          name: getDictPath('main'),
           type: 'json',
           data: {
             'H-L': 'hello',
@@ -59,7 +75,7 @@ describe('StrippedPlover Comprehensive Tests', () => {
         id: 1,
         method: 'import_dictionary',
         params: {
-          name: 'main',
+          name: getDictPath('main'),
           type: 'json',
           data: {
             'H-L': 'hello',
@@ -80,7 +96,7 @@ describe('StrippedPlover Comprehensive Tests', () => {
           id: 1,
           method: 'import_dictionary',
           params: {
-            name: 'main',
+            name: getDictPath('main'),
             type: 'json',
             data: {
               'PREFIX': '{^prefix}',
@@ -108,11 +124,14 @@ describe('StrippedPlover Comprehensive Tests', () => {
 
   describe('Dictionary Management', () => {
     it('prioritizes dictionaries', async () => {
+      const userPath = getDictPath('user.json');
+      const mainPath = getDictPath('main.json');
+
       await engine.handleRequest({
         id: 1,
         method: 'import_dictionary',
         params: {
-          name: 'user.json',
+          name: userPath,
           type: 'json',
           data: { 'TEFT': 'user' }
         }
@@ -121,7 +140,7 @@ describe('StrippedPlover Comprehensive Tests', () => {
         id: 2,
         method: 'import_dictionary',
         params: {
-          name: 'main.json',
+          name: mainPath,
           type: 'json',
           data: { 'TEFT': 'main' }
         }
@@ -130,7 +149,7 @@ describe('StrippedPlover Comprehensive Tests', () => {
       await engine.handleRequest({
         id: 3,
         method: 'prioritize_dictionaries',
-        params: { paths: ['main.json'] }
+        params: { paths: [mainPath] }
       });
 
       expect(await translate('TEFT')).toBe('main');
@@ -138,7 +157,7 @@ describe('StrippedPlover Comprehensive Tests', () => {
       await engine.handleRequest({
         id: 4,
         method: 'prioritize_dictionaries',
-        params: { paths: ['user.json'] }
+        params: { paths: [userPath] }
       });
 
       await engine.handleRequest({ id: 5, method: 'reset_state' });
@@ -146,11 +165,12 @@ describe('StrippedPlover Comprehensive Tests', () => {
     });
 
     it('enables and disables dictionaries', async () => {
+      const mainPath = getDictPath('main.json');
       await engine.handleRequest({
         id: 1,
         method: 'import_dictionary',
         params: {
-          name: 'main.json',
+          name: mainPath,
           type: 'json',
           data: { 'TEFT': 'test' }
         }
@@ -161,43 +181,25 @@ describe('StrippedPlover Comprehensive Tests', () => {
       await engine.handleRequest({
         id: 2,
         method: 'set_dictionary_enabled',
-        params: { path: 'main.json', enabled: false }
+        params: { path: mainPath, enabled: false }
       });
 
       await engine.handleRequest({ id: 3, method: 'reset_state' });
       const res = await translateRaw('TEFT');
       expect(res[0].text).toContain('TEFT');
     });
-
-    it('handles remove_dictionary with path normalization', async () => {
-        const path = '/tmp/my-dict.json';
-        const resImport = await engine.handleRequest({
-            id: 1,
-            method: 'import_dictionary',
-            params: { name: path, type: 'json', data: {'A': 'b'} }
-        });
-
-        expect(resImport.error).toBeUndefined();
-
-        // Remove using path with redundant slashes
-        const res = await engine.handleRequest({
-            id: 2,
-            method: 'remove_dictionary',
-            params: { name: '//tmp//my-dict.json' }
-        });
-
-        expect(res.error).toBeUndefined();
-        expect((res.result as any).name).toBe('//tmp//my-dict.json');
-    });
   });
 
   describe('Solo Mode', () => {
     it('enters and exits solo mode', async () => {
+      const d1 = getDictPath('d1');
+      const d2 = getDictPath('d2');
+
       await engine.handleRequest({
         id: 1,
         method: 'import_dictionary',
         params: {
-            name: 'd1',
+            name: d1,
             type: 'json',
             data: { 'KP': 'one' }
         }
@@ -206,7 +208,7 @@ describe('StrippedPlover Comprehensive Tests', () => {
         id: 2,
         method: 'import_dictionary',
         params: {
-            name: 'd2',
+            name: d2,
             type: 'json',
             data: { 'TK': 'two' }
         }
@@ -219,7 +221,7 @@ describe('StrippedPlover Comprehensive Tests', () => {
       await engine.handleRequest({
         id: 3,
         method: 'solo_dictionaries',
-        params: { toggles: ['+d1'] }
+        params: { toggles: [`+${d1}`] }
       });
 
       await engine.handleRequest({ id: 4, method: 'reset_state' });
@@ -242,10 +244,11 @@ describe('StrippedPlover Comprehensive Tests', () => {
 
   describe('CRUD', () => {
       it('adds, updates, removes entries', async () => {
+          const dictName = getDictPath('test');
           await engine.handleRequest({
               id: 1,
               method: 'import_dictionary',
-              params: { name: 'test', type: 'json', data: {} }
+              params: { name: dictName, type: 'json', data: {} }
           });
 
           await engine.handleRequest({
@@ -272,5 +275,28 @@ describe('StrippedPlover Comprehensive Tests', () => {
           const res = await translateRaw('TEFT');
           expect(res[0].text).toContain('TEFT');
       });
+  });
+
+  describe('Python Dictionaries', () => {
+    it('translates using python dictionary', async () => {
+      const pythonCode = `
+LONGEST_KEY = 1
+def lookup(key):
+    if key == ('TEFT',):
+        return 'test'
+    return None
+`;
+      await engine.handleRequest({
+        id: 1,
+        method: 'import_dictionary',
+        params: {
+          name: 'test.py',
+          type: 'python',
+          pythonCode
+        }
+      });
+
+      expect(await translate('TEFT')).toBe('test');
+    });
   });
 });
