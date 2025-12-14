@@ -5,7 +5,7 @@
  */
 
 import { Stroke, normalizeSteno } from './stroke.js';
-import { StenoDictionary, StenoDictionaryCollection, StenoDictionaryLike, loadDictionary, saveDictionaryToPython, loadPythonDictionaryEntries, PythonDictionary } from './dictionary/index.js';
+import { StenoDictionary, StenoDictionaryCollection, StenoDictionaryLike, createJsonDictionary, createPythonDictionary, PythonDictionary, DictionaryType } from './dictionary/index.js';
 import { Translator, Translation } from './translation.js';
 import { Formatter, Action, Case } from './formatting.js';
 import * as system from './system/index.js';
@@ -445,9 +445,6 @@ export class StrippedPlover {
         case 'end_solo_dictionaries':
           result = this.endSoloDictionariesRpc();
           break;
-        case 'add_dictionary':
-          result = await this.addDictionary(params);
-          break;
         case 'remove_dictionary':
           result = this.removeDictionary(params);
           break;
@@ -603,38 +600,25 @@ export class StrippedPlover {
     return { status: 'ok', dictionaries: this.describeDictionaries(), solo: false };
   }
 
-  private async addDictionary(params: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const path = params.path as string;
-    if (!path) {
-      throw new Error('Dictionary path is required');
-    }
-
-    const dictionary = await loadDictionary(path);
-    const dicts = [...this.dictionaries.dicts, dictionary];
-    this.dictionaries.setDicts(dicts);
-
-    return { status: 'ok', path, entries: dictionary.length };
-  }
-
   private removeDictionary(params: Record<string, unknown>): Record<string, unknown> {
-    const path = params.path as string;
-    if (!path) {
-      throw new Error('Dictionary path is required');
+    const name = params.name as string;
+    if (!name) {
+      throw new Error('Dictionary name is required');
     }
 
-    const dicts = this.dictionaries.dicts.filter(d => d.path !== path);
+    const dicts = this.dictionaries.dicts.filter(d => d.path !== name);
     if (dicts.length === this.dictionaries.dicts.length) {
-      throw new Error(`Dictionary not found: ${path}`);
+      throw new Error(`Dictionary not found: ${name}`);
     }
 
     this.dictionaries.setDicts(dicts);
-    return { status: 'ok', path };
+    return { status: 'ok', name };
   }
 
   private addEntry(params: Record<string, unknown>): Record<string, unknown> {
     const stroke = params.stroke as string;
     const translation = params.translation as string;
-    const path = params.path as string | undefined;
+    const name = params.name as string | undefined;
 
     if (!stroke || !translation) {
       throw new Error('Both stroke and translation are required');
@@ -643,10 +627,10 @@ export class StrippedPlover {
     const strokeTuple = normalizeSteno(stroke, false);
     let dictionary: StenoDictionaryLike;
 
-    if (path) {
-      const d = this.dictionaries.get(path);
+    if (name) {
+      const d = this.dictionaries.get(name);
       if (!d) {
-        throw new Error(`Dictionary not found: ${path}`);
+        throw new Error(`Dictionary not found: ${name}`);
       }
       dictionary = d;
     } else {
@@ -664,7 +648,7 @@ export class StrippedPlover {
 
   private removeEntry(params: Record<string, unknown>): Record<string, unknown> {
     const stroke = params.stroke as string;
-    const path = params.path as string | undefined;
+    const name = params.name as string | undefined;
 
     if (!stroke) {
       throw new Error('Stroke is required');
@@ -672,13 +656,13 @@ export class StrippedPlover {
 
     const strokeTuple = normalizeSteno(stroke, false);
 
-    if (path) {
-      const dictionary = this.dictionaries.get(path);
+    if (name) {
+      const dictionary = this.dictionaries.get(name);
       if (!dictionary) {
-        throw new Error(`Dictionary not found: ${path}`);
+        throw new Error(`Dictionary not found: ${name}`);
       }
       if (dictionary.readonly) {
-        throw new Error(`Dictionary is read-only: ${path}`);
+        throw new Error(`Dictionary is read-only: ${name}`);
       }
       if (!dictionary.has(strokeTuple)) {
         throw new Error(`Entry not found: ${stroke}`);
@@ -705,7 +689,7 @@ export class StrippedPlover {
   private updateEntry(params: Record<string, unknown>): Record<string, unknown> {
     const stroke = params.stroke as string;
     const translation = params.translation as string;
-    const path = params.path as string | undefined;
+    const name = params.name as string | undefined;
 
     if (!stroke || !translation) {
       throw new Error('Both stroke and translation are required');
@@ -714,10 +698,10 @@ export class StrippedPlover {
     const strokeTuple = normalizeSteno(stroke, false);
     let dictionary: StenoDictionaryLike | null = null;
 
-    if (path) {
-      dictionary = this.dictionaries.get(path);
+    if (name) {
+      dictionary = this.dictionaries.get(name);
       if (!dictionary) {
-        throw new Error(`Dictionary not found: ${path}`);
+        throw new Error(`Dictionary not found: ${name}`);
       }
     } else {
       for (const d of this.dictionaries.dicts) {
@@ -774,14 +758,19 @@ export class StrippedPlover {
   }
 
   private getDictionaryEntries(params: Record<string, unknown>): Record<string, unknown> {
-    const path = params.path as string;
-    if (!path) {
-      throw new Error('Dictionary path is required');
+    const name = params.name as string;
+    if (!name) {
+      throw new Error('Dictionary name is required');
     }
 
-    const dictionary = this.dictionaries.get(path);
+    const dictionary = this.dictionaries.get(name);
     if (!dictionary) {
-      throw new Error(`Dictionary not found: ${path}`);
+      throw new Error(`Dictionary not found: ${name}`);
+    }
+
+    // Python dictionaries may not have enumerable entries
+    if (dictionary instanceof PythonDictionary) {
+      throw new Error('Cannot get entries from Python dictionary. Use export_dictionary instead.');
     }
 
     const entries = dictionary.items().map(([strokeTuple, translation]) => ({
@@ -789,98 +778,118 @@ export class StrippedPlover {
       translation,
     }));
 
-    return { path, entries };
+    return { name, entries };
   }
 
   /**
-   * Export a dictionary - dumps entries to output as a protocol message
+   * Export a dictionary - dumps data to output as a protocol message
+   * 
+   * For JSON dictionaries: returns `data` (stroke -> translation mapping)
+   * For Python dictionaries: returns `pythonCode` (Python source code)
    */
   private exportDictionary(params: Record<string, unknown>): Record<string, unknown> {
-    const path = params.path as string;
-    if (!path) {
-      throw new Error('Dictionary path is required');
+    const name = params.name as string;
+    if (!name) {
+      throw new Error('Dictionary name is required');
     }
 
-    const dictionary = this.dictionaries.get(path);
+    const dictionary = this.dictionaries.get(name);
     if (!dictionary) {
-      throw new Error(`Dictionary not found: ${path}`);
+      throw new Error(`Dictionary not found: ${name}`);
     }
 
-    // Export as JSON object
-    const data: Record<string, string> = {};
-    for (const [strokeTuple, translation] of dictionary.items()) {
-      data[strokeTuple.join('/')] = translation;
-    }
+    if (dictionary instanceof PythonDictionary) {
+      // Export Python dictionary as code
+      return {
+        status: 'ok',
+        name,
+        type: 'python',
+        pythonCode: dictionary.pythonCode,
+      };
+    } else {
+      // Export JSON dictionary as entries
+      const data: Record<string, string> = {};
+      for (const [strokeTuple, translation] of dictionary.items()) {
+        data[strokeTuple.join('/')] = translation;
+      }
 
-    return {
-      status: 'ok',
-      path,
-      format: 'json',
-      data,
-    };
+      return {
+        status: 'ok',
+        name,
+        type: 'json',
+        data,
+      };
+    }
   }
 
   /**
    * Import a dictionary - reads entries from the request
+   * 
+   * For JSON dictionaries: requires `type: "json"` and `data` (stroke -> translation mapping)
+   * For Python dictionaries: requires `type: "python"` and `pythonCode` (Python source code)
    */
   private async importDictionary(params: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const path = params.path as string;
-    const data = params.data as Record<string, string>;
+    const name = params.name as string;
+    const dictType = params.type as DictionaryType;
     const merge = params.merge as boolean ?? false;
 
-    if (!path) {
-      throw new Error('Dictionary path is required');
+    if (!name) {
+      throw new Error('Dictionary name is required');
     }
-    if (!data || typeof data !== 'object') {
-      throw new Error('Dictionary data is required');
+    if (!dictType || (dictType !== 'json' && dictType !== 'python')) {
+      throw new Error('Dictionary type is required and must be "json" or "python"');
     }
-    const isPython = path.toLowerCase().endsWith('.py');
 
-    if (isPython) {
-      const incoming: Array<[string[], string]> = [];
-      for (const [stroke, translation] of Object.entries(data)) {
-        incoming.push([normalizeSteno(stroke, false), translation]);
+    if (dictType === 'python') {
+      const pythonCode = params.pythonCode as string;
+      if (!pythonCode || typeof pythonCode !== 'string') {
+        throw new Error('pythonCode is required for Python dictionaries');
       }
 
-      let entries = incoming;
+      // For Python dictionaries, we don't support merge - just replace
       if (merge) {
-        const existing = await loadPythonDictionaryEntries(path);
-        const merged = new Map(existing.map(([stroke, translation]) => [stroke.join('/'), [stroke, translation] as [string[], string]]));
-        for (const [stroke, translation] of incoming) {
-          merged.set(stroke.join('/'), [stroke, translation]);
-        }
-        entries = [...merged.values()];
+        throw new Error('Merge is not supported for Python dictionaries. Python dictionaries store code, not entries.');
       }
 
-      saveDictionaryToPython(entries, path);
-
-      let dictionary = this.dictionaries.get(path);
-      const loaded = await loadDictionary(path);
-      if (!dictionary) {
-        this.dictionaries.setDicts([...this.dictionaries.dicts, loaded]);
-      } else {
+      let dictionary = this.dictionaries.get(name);
+      if (dictionary) {
         if (dictionary instanceof PythonDictionary) {
           dictionary.terminate();
         }
-        const updated = this.dictionaries.dicts.map(d => (d.path === path ? loaded : d));
+      }
+
+      // Create new Python dictionary from code
+      const loaded = await createPythonDictionary(name, pythonCode);
+      
+      if (!dictionary) {
+        this.dictionaries.setDicts([...this.dictionaries.dicts, loaded]);
+      } else {
+        const updated = this.dictionaries.dicts.map(d => (d.path === name ? loaded : d));
         this.dictionaries.setDicts(updated);
       }
 
       return {
         status: 'ok',
-        path,
-        entries: entries.length,
+        name,
+        type: 'python',
+        entries: loaded.length,
       };
     } else {
-      let dictionary = this.dictionaries.get(path);
+      // JSON dictionary
+      const data = params.data as Record<string, string>;
+      if (!data || typeof data !== 'object') {
+        throw new Error('data is required for JSON dictionaries');
+      }
+
+      let dictionary = this.dictionaries.get(name);
       
       if (!dictionary) {
         // Create a new dictionary
-        dictionary = new StenoDictionary({ path });
+        dictionary = createJsonDictionary(name, {});
         const dicts = [...this.dictionaries.dicts, dictionary];
         this.dictionaries.setDicts(dicts);
       } else if (dictionary.readonly) {
-        throw new Error(`Dictionary is read-only: ${path}`);
+        throw new Error(`Dictionary is read-only: ${name}`);
       }
 
       if (!merge) {
@@ -897,7 +906,8 @@ export class StrippedPlover {
 
       return {
         status: 'ok',
-        path,
+        name,
+        type: 'json',
         entries: dictionary.length,
       };
     }

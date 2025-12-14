@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { StenoDictionaryLike } from './steno-dictionary.js';
 // Use vendored python-wasm with sandboxed POSIX operations
 import { asyncPython, PythonWasmAsync } from '../../vendor/python-wasm/dist/node.js';
@@ -13,10 +12,12 @@ type PythonRuntime = PythonWasmAsync;
  * - lookup(key: tuple[str, ...]) -> str - Function that returns translation or raises KeyError
  * - reverse_lookup(value: str) -> list[tuple[str, ...]] - Optional function for reverse lookup
  * 
- * We use asyncPython for non-blocking lookups.
+ * Python dictionaries store the Python code directly (no filesystem access).
+ * The code is executed in a sandboxed WASM Python runtime.
  */
 export class PythonDictionary implements StenoDictionaryLike {
   private _path: string;
+  private _pythonCode: string;
   private _py: PythonRuntime | null = null;
   private _longestKey = 0;
   private _hasReverseLookup = false;
@@ -25,18 +26,31 @@ export class PythonDictionary implements StenoDictionaryLike {
   readonly = true;
   enabled: boolean;
 
-  private constructor(path: string, enabled = true) {
-    this._path = path;
+  private constructor(name: string, pythonCode: string, enabled = true) {
+    this._path = name;
+    this._pythonCode = pythonCode;
     this.enabled = enabled;
   }
 
-  static async load(path: string): Promise<PythonDictionary> {
-    const dict = new PythonDictionary(path);
-    await dict.loadFromPython(path);
+  /**
+   * Load a Python dictionary from code string.
+   * This is the primary way to create Python dictionaries - no filesystem access.
+   */
+  static async loadFromCode(name: string, pythonCode: string): Promise<PythonDictionary> {
+    const dict = new PythonDictionary(name, pythonCode);
+    await dict.initializePython(pythonCode);
     return dict;
   }
 
-  private async loadFromPython(path: string): Promise<void> {
+  /**
+   * Get the Python code for this dictionary.
+   * Used for export and serialization.
+   */
+  get pythonCode(): string {
+    return this._pythonCode;
+  }
+
+  private async initializePython(pythonCode: string): Promise<void> {
     // Use python-wasm (CPython) with full filesystem for proper stdlib support
     const py: PythonRuntime = await asyncPython({
       fs: 'everything',
@@ -59,9 +73,8 @@ export class PythonDictionary implements StenoDictionaryLike {
       ].join('\n')
     );
 
-    // Load the dictionary module content
-    const content = readFileSync(path, 'utf-8');
-    await py.exec(content);
+    // Execute the Python code directly
+    await py.exec(pythonCode);
 
     // Add safe lookup helper function
     await py.exec(`

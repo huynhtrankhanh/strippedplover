@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 
@@ -32,10 +30,7 @@ beforeAll(() => {
 });
 
 describe('STDIO end-to-end', () => {
-  it('handles add, translate, export, quit over STDIO', async () => {
-    const dir = mkdtempSync(path.join(tmpdir(), 'stdio-e2e-'));
-    const dictPath = path.join(dir, 'user.py');
-
+  it('handles import, translate, export, quit over STDIO with JSON dictionary', async () => {
     const proc = spawn('node', ['dist/index.js'], { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] });
     const lines: string[] = [];
 
@@ -51,15 +46,16 @@ describe('STDIO end-to-end', () => {
           id: '1',
           method: 'import_dictionary',
           params: {
-            path: dictPath,
+            name: 'user-dict',
+            type: 'json',
             data: { TEFT: 'test', 'HEL/HROE': 'hello' },
-            merge: false,
           },
         }) + '\n'
       );
       const importResp = JSON.parse(await waitForLine(lines));
       expect(importResp.result?.status).toBe('ok');
       expect(importResp.result?.entries).toBe(2);
+      expect(importResp.result?.type).toBe('json');
 
       proc.stdin.write(
         JSON.stringify({ id: '2', method: 'translate', params: { stroke: 'TEFT' } }) + '\n'
@@ -70,9 +66,10 @@ describe('STDIO end-to-end', () => {
       expect(typeof preedit?.text === 'string' ? preedit.text.trim() : undefined).toBe('test');
 
       proc.stdin.write(
-        JSON.stringify({ id: '3', method: 'export_dictionary', params: { path: dictPath } }) + '\n'
+        JSON.stringify({ id: '3', method: 'export_dictionary', params: { name: 'user-dict' } }) + '\n'
       );
       const exportResp = JSON.parse(await waitForLine(lines));
+      expect(exportResp.result?.type).toBe('json');
       expect(exportResp.result?.data).toEqual({ TEFT: 'test', 'HEL/HROE': 'hello' });
 
       proc.stdin.write(JSON.stringify({ id: '4', method: 'quit', params: {} }) + '\n');
@@ -81,7 +78,71 @@ describe('STDIO end-to-end', () => {
     } finally {
       proc.kill();
       rl.close();
-      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60000);
+
+  it('handles import, translate, export, quit over STDIO with Python dictionary', async () => {
+    const proc = spawn('node', ['dist/index.js'], { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] });
+    const lines: string[] = [];
+
+    const rl = readline.createInterface({ input: proc.stdout });
+    rl.on('line', line => lines.push(line));
+
+    const pythonCode = `
+LONGEST_KEY = 2
+
+DICTIONARY = {
+    ('TEFT',): 'test',
+    ('HEL', 'HROE'): 'hello',
+}
+
+def lookup(key):
+    if key in DICTIONARY:
+        return DICTIONARY[key]
+    raise KeyError(key)
+`;
+
+    try {
+      const ready = JSON.parse(await waitForLine(lines));
+      expect(ready.status).toBe('ready');
+
+      proc.stdin.write(
+        JSON.stringify({
+          id: '1',
+          method: 'import_dictionary',
+          params: {
+            name: 'python-dict',
+            type: 'python',
+            pythonCode,
+          },
+        }) + '\n'
+      );
+      const importResp = JSON.parse(await waitForLine(lines, 30000));
+      expect(importResp.result?.status).toBe('ok');
+      expect(importResp.result?.entries).toBe(2);
+      expect(importResp.result?.type).toBe('python');
+
+      proc.stdin.write(
+        JSON.stringify({ id: '2', method: 'translate', params: { stroke: 'TEFT' } }) + '\n'
+      );
+      const translateResp = JSON.parse(await waitForLine(lines));
+      const preedit = translateResp.result?.output?.[0];
+      expect(preedit?.type).toBe('preedit');
+      expect(typeof preedit?.text === 'string' ? preedit.text.trim() : undefined).toBe('test');
+
+      proc.stdin.write(
+        JSON.stringify({ id: '3', method: 'export_dictionary', params: { name: 'python-dict' } }) + '\n'
+      );
+      const exportResp = JSON.parse(await waitForLine(lines));
+      expect(exportResp.result?.type).toBe('python');
+      expect(exportResp.result?.pythonCode).toBe(pythonCode);
+
+      proc.stdin.write(JSON.stringify({ id: '4', method: 'quit', params: {} }) + '\n');
+      const quitResp = JSON.parse(await waitForLine(lines));
+      expect(quitResp.result?.status).toBe('ok');
+    } finally {
+      proc.kill();
+      rl.close();
     }
   }, 60000);
 });
