@@ -242,3 +242,176 @@ def lookup(key):
     dict.terminate();
   }, 30000);
 });
+
+/**
+ * Security tests: Verify that the Python sandbox blocks dangerous operations.
+ * These tests ensure that malicious Python code cannot escape the sandbox.
+ */
+describe('python sandbox security', () => {
+  it('blocks os.system shell command execution', async () => {
+    const code = `
+LONGEST_KEY = 1
+
+def lookup(key):
+    import os
+    # Attempt to execute a shell command
+    try:
+        result = os.system('echo pwned')
+        # os.system returns -1 when blocked (not 0 which indicates success)
+        if result == 0:
+            return 'executed: success'
+        else:
+            return f'blocked: returned {result}'
+    except Exception as e:
+        return f'blocked: {type(e).__name__}'
+`;
+
+    const dict = await PythonDictionary.loadFromCode('system-test', code);
+    const result = await dict.get(['TEST']);
+    
+    // Should return -1 (blocked) not 0 (success)
+    expect(result).toMatch(/blocked/i);
+    
+    dict.terminate();
+  }, 30000);
+
+  it('blocks os.fork subprocess creation', async () => {
+    const code = `
+LONGEST_KEY = 1
+
+def lookup(key):
+    import os
+    try:
+        pid = os.fork()
+        return f'forked: {pid}'
+    except Exception as e:
+        return f'blocked: {type(e).__name__}'
+`;
+
+    const dict = await PythonDictionary.loadFromCode('fork-test', code);
+    const result = await dict.get(['TEST']);
+    
+    // Should be blocked
+    expect(result).toMatch(/blocked|NotImplemented|error|None/i);
+    
+    dict.terminate();
+  }, 30000);
+
+  it('blocks os.execve command execution', async () => {
+    const code = `
+LONGEST_KEY = 1
+
+def lookup(key):
+    import os
+    try:
+        os.execve('/bin/sh', ['/bin/sh', '-c', 'echo pwned'], {})
+        return 'executed'
+    except Exception as e:
+        return f'blocked: {type(e).__name__}'
+`;
+
+    const dict = await PythonDictionary.loadFromCode('execve-test', code);
+    const result = await dict.get(['TEST']);
+    
+    // Should be blocked
+    expect(result).toMatch(/blocked|NotImplemented|error|None/i);
+    
+    dict.terminate();
+  }, 30000);
+
+  it('blocks subprocess module import', async () => {
+    const code = `
+LONGEST_KEY = 1
+
+def lookup(key):
+    try:
+        import subprocess
+        result = subprocess.run(['echo', 'pwned'], capture_output=True)
+        return f'executed: {result.stdout}'
+    except ImportError as e:
+        return 'blocked: ImportError'
+    except Exception as e:
+        return f'blocked: {type(e).__name__}'
+`;
+
+    const dict = await PythonDictionary.loadFromCode('subprocess-test', code);
+    const result = await dict.get(['TEST']);
+    
+    // Should be blocked by import blocker
+    expect(result).toMatch(/blocked|ImportError/i);
+    
+    dict.terminate();
+  }, 30000);
+
+  it('blocks socket module import', async () => {
+    const code = `
+LONGEST_KEY = 1
+
+def lookup(key):
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(('example.com', 80))
+        return 'connected'
+    except ImportError as e:
+        return 'blocked: ImportError'
+    except Exception as e:
+        return f'blocked: {type(e).__name__}'
+`;
+
+    const dict = await PythonDictionary.loadFromCode('socket-test', code);
+    const result = await dict.get(['TEST']);
+    
+    // Should be blocked by import blocker
+    expect(result).toMatch(/blocked|ImportError/i);
+    
+    dict.terminate();
+  }, 30000);
+
+  it('blocks js module import for WASM escape', async () => {
+    const code = `
+LONGEST_KEY = 1
+
+def lookup(key):
+    try:
+        import js
+        # Attempt to access JavaScript runtime
+        return 'js module loaded'
+    except ImportError as e:
+        return 'blocked: ImportError'
+    except Exception as e:
+        return f'blocked: {type(e).__name__}'
+`;
+
+    const dict = await PythonDictionary.loadFromCode('js-test', code);
+    const result = await dict.get(['TEST']);
+    
+    // Should be blocked by import blocker
+    expect(result).toMatch(/blocked|ImportError/i);
+    
+    dict.terminate();
+  }, 30000);
+
+  it('blocks os.popen command execution', async () => {
+    const code = `
+LONGEST_KEY = 1
+
+def lookup(key):
+    import os
+    try:
+        f = os.popen('echo pwned')
+        result = f.read()
+        return f'executed: {result}'
+    except Exception as e:
+        return f'blocked: {type(e).__name__}'
+`;
+
+    const dict = await PythonDictionary.loadFromCode('popen-test', code);
+    const result = await dict.get(['TEST']);
+    
+    // Should be blocked
+    expect(result).toMatch(/blocked|NotImplemented|error|None/i);
+    
+    dict.terminate();
+  }, 30000);
+});
