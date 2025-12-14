@@ -237,14 +237,14 @@ function unistd(context) {
         },
         // SANDBOXED: fork is disabled to prevent process creation
         fork: () => {
-            (0, util_1.notImplemented)("fork blocked in sandbox");
+            (0, util_1.notImplemented)("fork: sandbox restricted");
         },
         fork1: () => {
             (0, util_1.notImplemented)("fork1");
         },
         // SANDBOXED: vfork is disabled to prevent process creation
         vfork: () => {
-            (0, util_1.notImplemented)("vfork blocked in sandbox");
+            (0, util_1.notImplemented)("vfork: sandbox restricted");
         },
         forkpty: () => {
             (0, util_1.notImplemented)("forkpty");
@@ -350,16 +350,16 @@ function unistd(context) {
         // SANDBOXED: execve is disabled to prevent arbitrary command execution
         // int execve(const char *pathname, char *const argv[], char *const envp[]);
         execve: (pathnamePtr, argvPtr, envpPtr) => {
-            (0, util_1.notImplemented)("execve blocked in sandbox");
+            (0, util_1.notImplemented)("execve: sandbox restricted");
         },
         // SANDBOXED: execv is disabled to prevent arbitrary command execution
         execv: (pathnamePtr, argvPtr) => {
-            (0, util_1.notImplemented)("execv blocked in sandbox");
+            (0, util_1.notImplemented)("execv: sandbox restricted");
         },
         // SANDBOXED: execvp is disabled to prevent arbitrary command execution
         // int execvp(const char *file, char *const argv[]);
         execvp: (filePtr, argvPtr) => {
-            (0, util_1.notImplemented)("execvp blocked in sandbox");
+            (0, util_1.notImplemented)("execvp: sandbox restricted");
         },
         // execlp is so far only by libedit to launch vim to edit
         // the history.  So it's safe to just disable.  Python doesn't
@@ -369,16 +369,16 @@ function unistd(context) {
         },
         // SANDBOXED: fexecve is disabled to prevent arbitrary command execution
         fexecve: (fd, argvPtr, envpPtr) => {
-            (0, util_1.notImplemented)("fexecve blocked in sandbox");
+            (0, util_1.notImplemented)("fexecve: sandbox restricted");
         },
         // SANDBOXED: pipe is disabled to prevent subprocess IPC
         //  int pipe(int pipefd[2]);
         pipe: (pipefdPtr) => {
-            (0, util_1.notImplemented)("pipe blocked in sandbox");
+            (0, util_1.notImplemented)("pipe: sandbox restricted");
         },
         // SANDBOXED: pipe2 is disabled to prevent subprocess IPC
         pipe2: (pipefdPtr, flags) => {
-            (0, util_1.notImplemented)("pipe2 blocked in sandbox");
+            (0, util_1.notImplemented)("pipe2: sandbox restricted");
         },
         lockf: (fd, cmd, size) => {
             const { lockf } = posix;

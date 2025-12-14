@@ -44,7 +44,7 @@ function stdlib({ child_process, os, recv, send, fs }) {
         // SANDBOXED: system() is disabled to prevent arbitrary shell command execution
         // int system(const char *command);
         system: (commandPtr) => {
-            (0, util_1.notImplemented)("system blocked in sandbox");
+            (0, util_1.notImplemented)("system: sandbox restricted");
         },
         // char *realpath(const char *path, char *resolved_path);
         realpath: (pathPtr, resolvedPathPtr) => {
