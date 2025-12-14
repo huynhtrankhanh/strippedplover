@@ -1,42 +1,38 @@
-# Stripped Plover Testing Report
+# Testing Report
 
-## Test Environment
-- Node.js Version: 22.21.0 (node:sqlite built-in **available**; using `/usr/bin/node`)
-- Platform: Linux
-- Date: 2025-12-14
+## Code Review
 
-## Test Summary
+### Core Logic (`src/engine.ts`, `src/translation.ts`, etc.)
 
-| Test Category | Tests Run | Passed | Failed |
-|--------------|-----------|--------|--------|
-| Python dictionary unit tests | 9 | 9 | 0 |
-| Engine import/export (Python & JSON) | 2 | 2 | 0 |
-| Dictionary management & macros (SQLite-backed) | 5 | 5 | 0 |
-| STDIO end-to-end (JSON & Python) | 2 | 2 | 0 |
-| **Total** | **18** | **18** | **0** |
+The core logic seems to follow the Plover algorithm closely.
+*   **Engine**: Acts as a controller, dispatching requests and managing state.
+*   **Translation**: Handles the stateful translation process, including undo/redo logic.
+*   **Formatting**: Handles text formatting, including spacing, capitalization, and meta commands.
+*   **Strokes**: Handles steno stroke parsing and normalization.
 
-## Detailed Results
+### Dictionary Handling
 
-### Python dictionary unit tests
-- **Files:** `src/dictionary/python-dictionary.test.ts`
-- **Focus:** Loading plover-style `.py` dictionaries, LONGEST_KEY validation, lookup/reverse lookup, enumeration for export, and read-only enforcement.
-- **Result:** All 9 tests passed.
+*   **JSON Dictionaries**: Backed by SQLite. This is efficient for lookups and updates.
+*   **Python Dictionaries**: Executed in a WASM sandbox. This allows for safe execution of user code.
 
-### Engine import/export (Python & JSON)
-- **File:** `src/engine.python-import.test.ts`
-- **Scenario:** Import dictionary data into Python and JSON dictionaries via the protocol, export back, and translate using the loaded dictionaries.
-- **Result:** Both protocol flows passed; translations emit expected preedit output after import.
+### Protocol
 
-### Dictionary management & macros (SQLite-backed)
-- **File:** `src/engine.dictionary.test.ts`
-- **Focus:** Reordering, enabling/disabling, toggle specifications, and Plover macros (PRIORITY_DICT, TOGGLE_DICT, SOLO_DICT/END_SOLO_DICT) backed by SQLite storage.
-- **Result:** All 5 tests passed with the experimental `node:sqlite` built-in available.
+The JSON-RPC-like protocol over STDIO is simple and effective.
 
-### STDIO end-to-end (JSON & Python)
-- **File:** `src/e2e/stdio.e2e.test.ts`
-- **Scenario:** Built `dist/`, started the STDIO binary, imported JSON and Python dictionaries, translated strokes, exported entries, and quit.
-- **Result:** Both STDIO flows passed; protocol requests/responses validated.
+### Bugs Found
 
-## Notes
-- Tests were executed with `npm test` (Vitest). The suite rebuilds TypeScript before STDIO end-to-end tests.
-- `node:sqlite` availability is required for dictionary management and was provided by Node.js 22.21.0 (NodeSource build). Experimental warnings for SQLite and MaxListeners were observed but did not affect results.
+1.  **`remove_dictionary` Path Normalization**: The `remove_dictionary` method in `src/engine.ts` performs an exact string match on the dictionary path. This fails if the input path has different separators or redundant slashes compared to the stored path, even if they refer to the same logical file.
+
+    *   **Severity**: Medium. It can cause confusion if clients are not consistent with path strings.
+    *   **Reproduction**: `src/reproduce_issue.test.ts`
+    *   **Fix**: Normalize the path using `normalizeDictPath` before searching/filtering.
+
+### Test Coverage Gaps
+
+*   **Formatting Edge Cases**: Need more tests for complex formatting interactions (glue, capitalization, attachments).
+*   **Dictionary Priorities**: Need to verify that `prioritize_dictionaries` works as expected.
+*   **Solo Mode**: Need to verify `solo_dictionaries` and `end_solo_dictionaries` logic.
+
+## Test Results
+
+(To be populated)
