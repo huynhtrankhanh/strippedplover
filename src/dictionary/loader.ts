@@ -1,14 +1,22 @@
 import { StenoDictionary, StenoDictionaryLike } from './steno-dictionary.js';
 import { normalizeSteno } from '../stroke.js';
-import { PythonDictionary } from './python-dictionary.js';
+import { PythonDictionary, buildPythonDictionarySource } from './python-dictionary.js';
 
 export type DictionaryFormat = 'json' | 'python';
-
-export interface DictionaryPayload {
+export type JsonDictionaryPayload = {
   path: string;
-  data?: Record<string, string>;
-  format?: DictionaryFormat;
-}
+  data: Record<string, string>;
+  format?: 'json';
+  code?: never;
+};
+export type PythonDictionaryPayload = {
+  path: string;
+  code: string;
+  format: 'python';
+  data?: never;
+};
+
+export type DictionaryPayload = JsonDictionaryPayload | PythonDictionaryPayload;
 
 function normalizeEntries(data: Record<string, string>): Array<[string[], string]> {
   const entries: Array<[string[], string]> = [];
@@ -21,7 +29,7 @@ function normalizeEntries(data: Record<string, string>): Array<[string[], string
 /**
  * Load a dictionary into SQLite from provided data.
  */
-export function loadJsonDictionary(payload: DictionaryPayload): StenoDictionary {
+export function loadJsonDictionary(payload: JsonDictionaryPayload): StenoDictionary {
   const dict = new StenoDictionary({ path: payload.path });
   if (payload.data) {
     dict.update(normalizeEntries(payload.data));
@@ -40,15 +48,9 @@ export function createDictionary(path: string): StenoDictionary {
  * Load a dictionary based on format, without touching the filesystem.
  */
 export async function loadDictionary(payload: DictionaryPayload): Promise<StenoDictionaryLike> {
-  const format = payload.format ?? (payload.path.toLowerCase().endsWith('.py') ? 'python' : 'json');
-  const data = payload.data ?? {};
-
-  switch (format) {
-    case 'python':
-      return PythonDictionary.fromData(data, { path: payload.path });
-    case 'json':
-      return loadJsonDictionary({ ...payload, data });
-    default:
-      throw new Error(`Unsupported dictionary format: ${format}`);
+  if (payload.format === 'python') {
+    return PythonDictionary.loadFromCode(payload.code, { path: payload.path });
   }
+
+  return loadJsonDictionary(payload);
 }

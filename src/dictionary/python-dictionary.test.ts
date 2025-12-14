@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { PythonDictionary } from './python-dictionary.js';
+import { PythonDictionary, buildPythonDictionarySource } from './python-dictionary.js';
 
 describe('python dictionary loader (SQLite-backed)', () => {
   it('loads a simple dictionary with lookup function', async () => {
-    const dict = await PythonDictionary.load({
+    const dict = await PythonDictionary.loadFromCode(buildPythonDictionarySource([
+      [['TEFT'], 'test'],
+      [['HELO'], 'hello'],
+    ]), { path: ':memory:' });
       TEFT: 'test',
       HELO: 'hello',
     });
@@ -15,11 +18,11 @@ describe('python dictionary loader (SQLite-backed)', () => {
   });
 
   it('loads dictionary with multi-stroke entries', async () => {
-    const dict = await PythonDictionary.load({
-      TEFT: 'test',
-      'TEFT/TEFT': 'test test',
-      'KAT/AS/TROEF': 'catastrophe',
-    });
+    const dict = await PythonDictionary.loadFromCode(buildPythonDictionarySource([
+      [['TEFT'], 'test'],
+      [['TEFT', 'TEFT'], 'test test'],
+      [['KAT', 'AS', 'TROEF'], 'catastrophe'],
+    ]), { path: ':memory:' });
 
     expect(dict.longestKey).toBe(3);
     expect(await dict.get(['TEFT'])).toBe('test');
@@ -29,8 +32,13 @@ describe('python dictionary loader (SQLite-backed)', () => {
   });
 
   it('maintains isolated state between dictionary instances', async () => {
-    const dict1 = await PythonDictionary.load({ FIRST: 'first dictionary' }, { path: ':memory:' });
-    const dict2 = await PythonDictionary.load({ SECOND: 'second dictionary', 'TWO/STROKES': 'two strokes' }, { path: ':memory:' });
+    const dict1 = await PythonDictionary.loadFromCode(buildPythonDictionarySource([
+      [['FIRST'], 'first dictionary'],
+    ]), { path: ':memory:' });
+    const dict2 = await PythonDictionary.loadFromCode(buildPythonDictionarySource([
+      [['SECOND'], 'second dictionary'],
+      [['TWO', 'STROKES'], 'two strokes'],
+    ]), { path: ':memory:' });
 
     expect(dict1.longestKey).toBe(1);
     expect(dict2.longestKey).toBe(2);
@@ -44,11 +52,11 @@ describe('python dictionary loader (SQLite-backed)', () => {
   });
 
   it('performs reverse lookup correctly', async () => {
-    const dict = await PythonDictionary.load({
-      TEFT: 'test',
-      'TEFT/TEFT': 'test',
-      OTHER: 'other',
-    });
+    const dict = await PythonDictionary.loadFromCode(buildPythonDictionarySource([
+      [['TEFT'], 'test'],
+      [['TEFT', 'TEFT'], 'test'],
+      [['OTHER'], 'other'],
+    ]), { path: ':memory:' });
 
     const testResults = await dict.reverseLookup('test');
     expect(testResults.size).toBe(2);
@@ -61,7 +69,9 @@ describe('python dictionary loader (SQLite-backed)', () => {
   });
 
   it('throws appropriate errors for mutating operations', async () => {
-    const dict = await PythonDictionary.load({ TEFT: 'test' });
+    const dict = await PythonDictionary.loadFromCode(buildPythonDictionarySource([
+      [['TEFT'], 'test'],
+    ]), { path: ':memory:' });
 
     expect(() => dict.set(['NEW'], 'value')).toThrow('read-only');
     expect(() => dict.delete(['TEFT'])).toThrow('read-only');
@@ -70,16 +80,16 @@ describe('python dictionary loader (SQLite-backed)', () => {
   });
 
   it('sets longestKey to zero when no entries are provided', async () => {
-    const dict = await PythonDictionary.load({});
+    const dict = await PythonDictionary.loadFromCode(buildPythonDictionarySource([]), { path: ':memory:' });
     expect(dict.longestKey).toBe(0);
     expect(await dict.get(['ANYTHING'])).toBeNull();
   });
 
   it('handles has correctly', async () => {
-    const dict = await PythonDictionary.load({
-      EXISTS: 'yes',
-      'MULTI/STROKE': 'also yes',
-    });
+    const dict = await PythonDictionary.loadFromCode(buildPythonDictionarySource([
+      [['EXISTS'], 'yes'],
+      [['MULTI', 'STROKE'], 'also yes'],
+    ]), { path: ':memory:' });
 
     expect(await dict.has(['EXISTS'])).toBe(true);
     expect(await dict.has(['MULTI', 'STROKE'])).toBe(true);
@@ -88,10 +98,10 @@ describe('python dictionary loader (SQLite-backed)', () => {
   });
 
   it('enumerates DICTIONARY entries for export', async () => {
-    const dict = await PythonDictionary.load({
-      TEFT: 'test',
-      'HEL/HROE': 'hello',
-    });
+    const dict = await PythonDictionary.loadFromCode(buildPythonDictionarySource([
+      [['TEFT'], 'test'],
+      [['HEL', 'HROE'], 'hello'],
+    ]), { path: ':memory:' });
 
     expect(dict.length).toBe(2);
     const items = dict.items();

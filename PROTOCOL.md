@@ -255,6 +255,7 @@ Dictionary path matching is suffix-based for prioritization and enable/disable o
 #### `add_dictionary`
 
 Add a SQLite-backed dictionary to the engine without reading from the filesystem.
+For Python dictionaries you must supply the Python source code directly.
 
 **Request:**
 ```json
@@ -262,7 +263,21 @@ Add a SQLite-backed dictionary to the engine without reading from the filesystem
   "id": "5",
   "method": "add_dictionary",
   "params": {
-    "path": "/path/to/dictionary.json"
+    "path": "/path/to/dictionary.json",
+    "data": {
+      "TEFT": "test"
+    }
+  }
+}
+
+// Python dictionaries require code:
+{
+  "id": "6",
+  "method": "add_dictionary",
+  "params": {
+    "path": "/path/to/dictionary.py",
+    "format": "python",
+    "code": "LONGEST_KEY = 1\nDICTIONARY = {('TEFT',): 'test'}\n\ndef lookup(key):\n    if key in DICTIONARY:\n        return DICTIONARY[key]\n    raise KeyError(key)\n"
   }
 }
 ```
@@ -516,7 +531,7 @@ Get all entries from a specific dictionary.
 
 #### `import_dictionary`
 
-Import dictionary entries from a protocol message. This creates a new dictionary or updates an existing one. Both `.json` and `.py` paths are stored inside SQLite; no helper files are written.
+Import dictionary entries from a protocol message. This creates a new dictionary or updates an existing one. Both `.json` and `.py` paths are stored inside SQLite; no helper files are written. For Python paths, the engine internally generates Python code from the provided `data`.
 
 **Request:**
 ```json

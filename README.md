@@ -48,7 +48,7 @@ See [PROTOCOL.md](PROTOCOL.md) for complete protocol documentation.
 |--------|-------------|
 | `translate` | Translate a stroke, returns updated preedit |
 | `reset_state` | Reset translation state |
-| `add_dictionary` | Register a SQLite-backed dictionary |
+| `add_dictionary` | Register a SQLite-backed dictionary (Python dictionaries require a `code` field) |
 | `remove_dictionary` | Unload a dictionary |
 | `prioritize_dictionaries` | Move selected dictionaries to the top of the stack |
 | `set_dictionary_enabled` | Enable or disable a specific dictionary |
@@ -72,9 +72,12 @@ Dictionaries can be imported and exported via protocol messages:
 {"id": "2", "method": "export_dictionary", "params": {"path": "my.json"}}
 // Response includes: {"result": {"data": {"TEFT": "test"}, ...}}
 
-// Python dictionaries are stored alongside JSON dictionaries inside SQLite:
-{"id": "3", "method": "import_dictionary", "params": {"path": "custom.py", "data": {"TEFT": "test"}}}
-{"id": "4", "method": "export_dictionary", "params": {"path": "custom.py"}}
+// Python dictionaries are stored alongside JSON dictionaries inside SQLite. Provide Python code directly when adding:
+{"id": "3", "method": "add_dictionary", "params": {"path": "custom.py", "format": "python", "code": "LONGEST_KEY = 1\nDICTIONARY = {('TEFT',): 'test'}\n\ndef lookup(key):\n    if key in DICTIONARY:\n        return DICTIONARY[key]\n    raise KeyError(key)\n"}}
+
+// Import/export still works with data; Python code is generated internally:
+{"id": "4", "method": "import_dictionary", "params": {"path": "custom.py", "data": {"TEFT": "test"}}}
+{"id": "5", "method": "export_dictionary", "params": {"path": "custom.py"}}
 ```
 
 ## MANIFESTO

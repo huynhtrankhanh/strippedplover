@@ -6,6 +6,7 @@
 
 import { Stroke, normalizeSteno } from './stroke.js';
 import { StenoDictionary, StenoDictionaryCollection, StenoDictionaryLike, loadDictionary } from './dictionary/index.js';
+import { buildPythonDictionarySource } from './dictionary/python-dictionary.js';
 import { Translator, Translation } from './translation.js';
 import { Formatter, Action, Case } from './formatting.js';
 import * as system from './system/index.js';
@@ -604,16 +605,28 @@ export class StrippedPlover {
   }
 
   private async addDictionary(params: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const { path, data, format } = params as {
+    const { path, data, format, code } = params as {
       path?: string;
       data?: Record<string, string>;
+      code?: string;
       format?: 'json' | 'python';
     };
     if (!path) {
       throw new Error('Dictionary path is required');
     }
 
-    const dictionary = await loadDictionary({ path, data, format });
+    const isPython = format === 'python' || path.toLowerCase().endsWith('.py');
+    if (isPython) {
+      if (!code) {
+        throw new Error('Python dictionaries must be provided as code');
+      }
+      const dictionary = await loadDictionary({ path, code, format: 'python' });
+      const dicts = [...this.dictionaries.dicts, dictionary];
+      this.dictionaries.setDicts(dicts);
+      return { status: 'ok', path, entries: dictionary.length };
+    }
+
+    const dictionary = await loadDictionary({ path, data: data ?? {}, format: 'json' });
     const dicts = [...this.dictionaries.dicts, dictionary];
     this.dictionaries.setDicts(dicts);
 
@@ -843,55 +856,43 @@ export class StrippedPlover {
     const existing = this.dictionaries.get(path);
     const incomingEntries = Object.entries(data).map(([stroke, translation]) => [normalizeSteno(stroke, false), translation] as [string[], string]);
 
-    if (format === 'python') {
-      const base = existing?.items?.() ?? [];
-      const merged = new Map<string, [string[], string]>();
-      if (merge) {
-        for (const [strokeTuple, translation] of base) {
-          merged.set(strokeTuple.join('/'), [strokeTuple, translation]);
-        }
-      }
-      for (const [stroke, translation] of incomingEntries) {
-        merged.set(stroke.join('/'), [stroke, translation]);
-      }
+    const baseEntries =
+      merge && existing
+        ? existing.items().map(([strokeTuple, translation]) => [strokeTuple, translation] as [string[], string])
+        : [];
 
-      const replacement = await loadDictionary({
-        path,
-        format: 'python',
-        data: Object.fromEntries([...merged.values()].map(([stroke, translation]) => [stroke.join('/'), translation])),
-      });
-
-      const dicts = existing
-        ? this.dictionaries.dicts.map(d => (d.path === path ? replacement : d))
-        : [...this.dictionaries.dicts, replacement];
-      this.dictionaries.setDicts(dicts);
-
-      return {
-        status: 'ok',
-        path,
-        entries: replacement.length,
-      };
+    const merged = new Map<string, [string[], string]>();
+    for (const [strokeTuple, translation] of baseEntries) {
+      merged.set(strokeTuple.join('/'), [strokeTuple, translation]);
+    }
+    for (const [stroke, translation] of incomingEntries) {
+      merged.set(stroke.join('/'), [stroke, translation]);
     }
 
-    // JSON / standard dictionaries mutate in-place
-    let dictionary = existing;
-    if (!dictionary) {
-      dictionary = new StenoDictionary({ path });
-      this.dictionaries.setDicts([...this.dictionaries.dicts, dictionary]);
-    } else if (dictionary.readonly) {
-      throw new Error(`Dictionary is read-only: ${path}`);
-    }
+    const mergedData = Object.fromEntries([...merged.values()].map(([stroke, translation]) => [stroke.join('/'), translation]));
 
-    if (!merge) {
-      dictionary.clear();
-    }
+    const replacement =
+      format === 'python'
+        ? await loadDictionary({
+            path,
+            format: 'python',
+            code: buildPythonDictionarySource([...merged.values()]),
+          })
+        : await loadDictionary({
+            path,
+            format: 'json',
+            data: mergedData,
+          });
 
-    dictionary.update(incomingEntries);
+    const dicts = existing
+      ? this.dictionaries.dicts.map(d => (d.path === path ? replacement : d))
+      : [...this.dictionaries.dicts, replacement];
+    this.dictionaries.setDicts(dicts);
 
     return {
       status: 'ok',
       path,
-      entries: dictionary.length,
+      entries: replacement.length,
     };
   }
 }

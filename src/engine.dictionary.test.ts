@@ -72,6 +72,16 @@ describe('dictionary management RPC methods', () => {
       'dicts/commands.json': false,
     });
   });
+
+  it('requires code when adding python dictionaries', async () => {
+    const engine = new StrippedPlover();
+    const resp = await engine.handleRequest({
+      id: 1,
+      method: 'add_dictionary',
+      params: { path: 'custom.py' },
+    });
+    expect(resp.error?.message).toContain('code');
+  });
 });
 
 describe('plover dictionary commands', () => {
