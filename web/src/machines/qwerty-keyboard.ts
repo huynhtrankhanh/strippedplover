@@ -179,10 +179,9 @@ export class QwertyKeyboardMachine extends StenoMachineBase {
     } else {
       // Check if stroke is complete (all keys released)
       if (this.downKeys.size === 0 && this.strokeKeys.size > 0) {
-        // In arpeggiate mode, require space key to send
-        if (!this.arpeggiate || this.strokeKeys.has(' ')) {
-          this.sendChord(this.strokeKeys);
-        }
+        // In arpeggiate mode, strokes are sent immediately on key release
+        // (arpeggiate mode is not commonly used with QWERTY)
+        this.sendChord(this.strokeKeys);
         this.strokeKeys.clear();
       }
     }
