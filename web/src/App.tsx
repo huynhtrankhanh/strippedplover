@@ -1,34 +1,102 @@
 import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+import { useStenoEngine } from './hooks'
+import { Notepad, StrokeDisplay, SettingsPanel, DictionaryLookup, StatusBar } from './components'
 import './App.css'
 
 function App() {
-  const [count, setCount] = useState(0)
-
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [showLookup, setShowLookup] = useState(false)
+  
+  const {
+    text,
+    setText,
+    strokeHistory,
+    machineState,
+    startCapture,
+    stopCapture,
+    resetState,
+    s1AsNumberKey,
+    setS1AsNumberKey,
+    dictionaries,
+    importDictionary,
+    exportDictionary,
+    removeDictionary,
+    setDictionaryEnabled,
+    prioritizeDictionaries,
+    addEntry,
+    removeEntry,
+    lookup,
+    reverseLookup,
+  } = useStenoEngine({ autoStart: true, s1AsNumberKey: true })
+  
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
+    <div className="app">
+      <header className="app-header">
+        <h1>Steno Notepad</h1>
+        <p className="app-subtitle">Stenography-powered writing</p>
+      </header>
+      
+      <main className="app-main">
+        <StatusBar
+          machineState={machineState}
+          onStartCapture={startCapture}
+          onStopCapture={stopCapture}
+          onReset={resetState}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
+        
+        <div className="app-content">
+          <div className="app-editor">
+            <Notepad
+              value={text}
+              onChange={setText}
+              placeholder="Start typing with your steno keyboard... Press Q for # (number key) by default."
+            />
+          </div>
+          
+          <div className="app-sidebar">
+            <StrokeDisplay strokes={strokeHistory} />
+            
+            <button 
+              className="lookup-toggle"
+              onClick={() => setShowLookup(!showLookup)}
+            >
+              {showLookup ? 'Hide' : 'Show'} Dictionary Lookup
+            </button>
+            
+            {showLookup && (
+              <DictionaryLookup
+                onLookup={lookup}
+                onReverseLookup={reverseLookup}
+                onAddEntry={addEntry}
+                onRemoveEntry={removeEntry}
+              />
+            )}
+          </div>
+        </div>
+      </main>
+      
+      <footer className="app-footer">
         <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
+          S1- as # key: <strong>{s1AsNumberKey ? 'ON' : 'OFF'}</strong> | 
+          Use your QWERTY keyboard for steno input | 
+          <button className="link-btn" onClick={() => setSettingsOpen(true)}>Settings</button>
         </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+      </footer>
+      
+      <SettingsPanel
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        s1AsNumberKey={s1AsNumberKey}
+        onS1AsNumberKeyChange={setS1AsNumberKey}
+        dictionaries={dictionaries}
+        onImportDictionary={importDictionary}
+        onRemoveDictionary={removeDictionary}
+        onSetDictionaryEnabled={setDictionaryEnabled}
+        onPrioritizeDictionaries={prioritizeDictionaries}
+        onExportDictionary={exportDictionary}
+      />
+    </div>
   )
 }
 
