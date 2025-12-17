@@ -5,44 +5,25 @@
  * This uses browser-compatible dictionary storage.
  */
 
-import { Stroke, normalizeSteno, setupStroke, type StrokeConfig } from './stroke';
+import { 
+  Stroke, 
+  normalizeSteno, 
+  setupStroke, 
+  type StrokeConfig,
+  KEYS,
+  IMPLICIT_HYPHEN_KEYS,
+  SUFFIX_KEYS,
+  NUMBER_KEY,
+  NUMBERS,
+  UNDO_STROKE_STENO,
+} from '@strippedplover/shared';
 import { StenoDictionary, StenoDictionaryCollection, type StenoDictionaryLike } from './browser-dictionary';
 
 // Re-export commonly used types
 export { Stroke, normalizeSteno };
 export { StenoDictionary, StenoDictionaryCollection, type StenoDictionaryLike };
 export type { StrokeConfig };
-
-// ============================================================================
-// System Configuration
-// ============================================================================
-
-export const KEYS = [
-  '#',
-  'S-', 'T-', 'K-', 'P-', 'W-', 'H-', 'R-',
-  'A-', 'O-',
-  '*',
-  '-E', '-U',
-  '-F', '-R', '-P', '-B', '-L', '-G', '-T', '-S', '-D', '-Z',
-] as const;
-
-export const IMPLICIT_HYPHEN_KEYS = ['A-', 'O-', '-E', '-U', '*'] as const;
-export const SUFFIX_KEYS = ['-Z', '-D', '-S', '-G'] as const;
-export const NUMBER_KEY = '#';
-export const UNDO_STROKE_STENO = '*';
-
-export const NUMBERS: Record<string, string> = {
-  'S-': '1-',
-  'T-': '2-',
-  'P-': '3-',
-  'H-': '4-',
-  'A-': '5-',
-  'O-': '0-',
-  '-F': '-6',
-  '-P': '-7',
-  '-L': '-8',
-  '-T': '-9',
-};
+export { KEYS, IMPLICIT_HYPHEN_KEYS, SUFFIX_KEYS, NUMBER_KEY, NUMBERS, UNDO_STROKE_STENO };
 
 /**
  * Setup the English Stenotype system
