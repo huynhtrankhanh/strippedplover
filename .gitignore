@@ -6,10 +6,6 @@
 
 # Dependencies
 /node_modules/
-/web/node_modules/
-
-# Web build artifacts
-/web/dist/
 
 # Plover: when run in portable mode from source.
 /*.rtf
