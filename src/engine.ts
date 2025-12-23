@@ -285,40 +285,35 @@ export class StrippedPlover {
       .filter(p => p.length > 0);
   }
 
-  private normalizeDictPath(p: string): string {
-    return p.replace(/\\/g, '/').replace(/\/+/g, '/');
-  }
-
-  private findDictionaryIndex(path: string, dicts: StenoDictionaryLike[] = this.dictionaries.dicts): number {
-    const normalizedTarget = this.normalizeDictPath(path);
-    const targetSuffix = `/${normalizedTarget}`;
+  private findDictionaryIndex(identifier: string, dicts: StenoDictionaryLike[] = this.dictionaries.dicts): number {
+    const targetSuffix = `/${identifier}`;
 
     const matches: Array<{ index: number; length: number }> = [];
     const normalizedDicts = dicts.map((dict, index) => ({
       index,
-      normalized: this.normalizeDictPath(dict.path),
+      identifier: dict.identifier,
     }));
 
-    for (const { index, normalized } of normalizedDicts) {
-      const candidate = `/${normalized}`;
+    for (const { index, identifier: candidateIdentifier } of normalizedDicts) {
+      const candidate = `/${candidateIdentifier}`;
       if (candidate === targetSuffix || candidate.endsWith(targetSuffix)) {
-        matches.push({ index, length: normalized.length });
+        matches.push({ index, length: candidateIdentifier.length });
       }
     }
 
     if (matches.length === 0) {
-      throw new Error(`Dictionary not found: ${path}`);
+      throw new Error(`Dictionary not found: ${identifier}`);
     }
 
-    // Prefer the shortest matching path; if there is a tie, keep the earliest dictionary order.
+    // Prefer the shortest matching identifier; if there is a tie, keep the earliest dictionary order.
     matches.sort((a, b) => (a.length === b.length ? a.index - b.index : a.length - b.length));
     return matches[0].index;
   }
 
-  private reprioritize(paths: string[], dicts: StenoDictionaryLike[] = this.dictionaries.dicts): StenoDictionaryLike[] {
+  private reprioritize(identifiers: string[], dicts: StenoDictionaryLike[] = this.dictionaries.dicts): StenoDictionaryLike[] {
     const working = [...dicts];
-    for (let i = paths.length - 1; i >= 0; i--) {
-      const idx = this.findDictionaryIndex(paths[i], working);
+    for (let i = identifiers.length - 1; i >= 0; i--) {
+      const idx = this.findDictionaryIndex(identifiers[i], working);
       const [dict] = working.splice(idx, 1);
       working.unshift(dict);
     }
@@ -332,13 +327,13 @@ export class StrippedPlover {
       if (trimmed.length === 0) continue;
 
       const action = trimmed.charAt(0);
-      const path = trimmed.slice(1).trim();
+      const identifier = trimmed.slice(1).trim();
 
-      if (!['+', '-', '!'].includes(action) || !path) {
+      if (!['+', '-', '!'].includes(action) || !identifier) {
         throw new Error(`Invalid dictionary toggle: ${spec}`);
       }
 
-      const idx = this.findDictionaryIndex(path, working);
+      const idx = this.findDictionaryIndex(identifier, working);
       const dict = working[idx];
 
       if (action === '+') {
@@ -352,9 +347,9 @@ export class StrippedPlover {
     return working;
   }
 
-  private describeDictionaries(): Array<{ path: string; enabled: boolean; readonly: boolean; entries: number }> {
+  private describeDictionaries(): Array<{ identifier: string; enabled: boolean; readonly: boolean; entries: number }> {
     return this.dictionaries.dicts.map(d => ({
-      path: d.path,
+      identifier: d.identifier,
       enabled: d.enabled,
       readonly: d.readonly,
       entries: d.length,
@@ -374,9 +369,9 @@ export class StrippedPlover {
     }
   }
 
-  private handlePriorityDict(paths: string[]): void {
-    if (paths.length === 0) return;
-    const updated = this.reprioritize(paths);
+  private handlePriorityDict(identifiers: string[]): void {
+    if (identifiers.length === 0) return;
+    const updated = this.reprioritize(identifiers);
     this.dictionaries.setDicts(updated);
   }
 
@@ -388,7 +383,7 @@ export class StrippedPlover {
 
   private handleSoloDict(toggles: string[]): void {
     if (!this.soloEnabled) {
-      this.soloPreviousEnabled = new Map(this.dictionaries.dicts.map(d => [d.path, d.enabled]));
+      this.soloPreviousEnabled = new Map(this.dictionaries.dicts.map(d => [d.identifier, d.enabled]));
       for (const dict of this.dictionaries.dicts) {
         dict.enabled = false;
       }
@@ -408,7 +403,7 @@ export class StrippedPlover {
     if (this.soloPreviousEnabled.size > 0) {
       const restored = [...this.dictionaries.dicts];
       for (const dict of restored) {
-        const previous = this.soloPreviousEnabled.get(dict.path);
+        const previous = this.soloPreviousEnabled.get(dict.identifier);
         if (previous !== undefined) {
           dict.enabled = previous;
         }
@@ -574,10 +569,10 @@ export class StrippedPlover {
   }
 
   private prioritizeDictionariesRpc(params: Record<string, unknown>): Record<string, unknown> {
-    const { paths } = params as { paths?: unknown };
-    const parsed = this.parseSelectionParam(paths);
+    const { identifiers } = params as { identifiers?: unknown };
+    const parsed = this.parseSelectionParam(identifiers);
     if (parsed.length === 0) {
-      throw new Error('Dictionary paths are required');
+      throw new Error('Dictionary identifiers are required');
     }
 
     this.handlePriorityDict(parsed);
@@ -585,21 +580,21 @@ export class StrippedPlover {
   }
 
   private setDictionaryEnabled(params: Record<string, unknown>): Record<string, unknown> {
-    const { path, enabled } = params as { path?: string; enabled?: unknown };
+    const { identifier, enabled } = params as { identifier?: string; enabled?: unknown };
 
-    if (!path) {
-      throw new Error('Dictionary path is required');
+    if (!identifier) {
+      throw new Error('Dictionary identifier is required');
     }
     if (typeof enabled !== 'boolean') {
       throw new Error('Enabled flag must be a boolean');
     }
 
     const dicts = [...this.dictionaries.dicts];
-    const idx = this.findDictionaryIndex(path, dicts);
+    const idx = this.findDictionaryIndex(identifier, dicts);
     dicts[idx].enabled = enabled;
     this.dictionaries.setDicts(dicts);
 
-    return { status: 'ok', path: dicts[idx].path, enabled };
+    return { status: 'ok', identifier: dicts[idx].identifier, enabled };
   }
 
   private toggleDictionariesRpc(params: Record<string, unknown>): Record<string, unknown> {
@@ -631,7 +626,7 @@ export class StrippedPlover {
       throw new Error('Dictionary name is required');
     }
 
-    const dicts = this.dictionaries.dicts.filter(d => d.path !== name);
+    const dicts = this.dictionaries.dicts.filter(d => d.identifier !== name);
     if (dicts.length === this.dictionaries.dicts.length) {
       throw new Error(`Dictionary not found: ${name}`);
     }
@@ -663,7 +658,7 @@ export class StrippedPlover {
     }
 
     if (dictionary.readonly) {
-      throw new Error(`Dictionary is read-only: ${dictionary.path}`);
+      throw new Error(`Dictionary is read-only: ${dictionary.identifier}`);
     }
 
     dictionary.set(strokeTuple, translation);
@@ -741,7 +736,7 @@ export class StrippedPlover {
     }
 
     if (dictionary.readonly) {
-      throw new Error(`Dictionary is read-only: ${dictionary.path}`);
+      throw new Error(`Dictionary is read-only: ${dictionary.identifier}`);
     }
 
     dictionary.set(strokeTuple, translation);
@@ -893,7 +888,7 @@ export class StrippedPlover {
       if (!dictionary) {
         this.dictionaries.setDicts([...this.dictionaries.dicts, loaded]);
       } else {
-        const updated = this.dictionaries.dicts.map(d => (d.path === name ? loaded : d));
+        const updated = this.dictionaries.dicts.map(d => (d.identifier === name ? loaded : d));
         this.dictionaries.setDicts(updated);
       }
 

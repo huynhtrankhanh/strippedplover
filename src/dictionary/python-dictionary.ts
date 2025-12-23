@@ -16,7 +16,7 @@ type PythonRuntime = PythonWasmAsync;
  * The code is executed in a sandboxed WASM Python runtime.
  */
 export class PythonDictionary implements StenoDictionaryLike {
-  private _path: string;
+  private _identifier: string;
   private _pythonCode: string;
   private _py: PythonRuntime | null = null;
   private _longestKey = 0;
@@ -27,7 +27,7 @@ export class PythonDictionary implements StenoDictionaryLike {
   enabled: boolean;
 
   private constructor(name: string, pythonCode: string, enabled = true) {
-    this._path = name;
+    this._identifier = name;
     this._pythonCode = pythonCode;
     this.enabled = enabled;
   }
@@ -134,12 +134,12 @@ def __safe_reverse_lookup(value):
     this._py = py;
   }
 
-  get path(): string {
-    return this._path;
+  get identifier(): string {
+    return this._identifier;
   }
 
-  set path(value: string) {
-    this._path = value;
+  set identifier(value: string) {
+    this._identifier = value;
   }
 
   get longestKey(): number {

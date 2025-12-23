@@ -26,7 +26,7 @@ try {
 }
 
 export interface StenoDictionaryLike {
-  path: string;
+  identifier: string;
   readonly: boolean;
   enabled: boolean;
   longestKey: number;
@@ -44,7 +44,7 @@ export interface StenoDictionaryLike {
 }
 
 export interface StenoDictionaryOptions {
-  path?: string;
+  identifier?: string;
   readonly?: boolean;
   enabled?: boolean;
 }
@@ -54,7 +54,7 @@ export interface StenoDictionaryOptions {
  */
 export class StenoDictionary implements StenoDictionaryLike {
   private db: DatabaseSyncInstance;
-  private _path: string;
+  private _identifier: string;
   private _readonly: boolean;
   private _enabled: boolean;
   private _timestamp: number;
@@ -64,14 +64,14 @@ export class StenoDictionary implements StenoDictionaryLike {
     if (!DatabaseSync) {
       throw new Error('node:sqlite built-in module is required to use StenoDictionary');
     }
-    this._path = options.path ?? ':memory:';
+    this._identifier = options.identifier ?? ':memory:';
     this._readonly = options.readonly ?? false;
     this._enabled = options.enabled ?? true;
     this._timestamp = Date.now();
     this._longestKey = 0;
 
     // Open SQLite database
-    this.db = new DatabaseSync(this._path === ':memory:' ? ':memory:' : this._path);
+    this.db = new DatabaseSync(this._identifier === ':memory:' ? ':memory:' : this._identifier);
     
     // Initialize schema
     this.initSchema();
@@ -91,12 +91,12 @@ export class StenoDictionary implements StenoDictionaryLike {
     `);
   }
 
-  get path(): string {
-    return this._path;
+  get identifier(): string {
+    return this._identifier;
   }
 
-  set path(value: string) {
-    this._path = value;
+  set identifier(value: string) {
+    this._identifier = value;
   }
 
   get readonly(): boolean {
@@ -294,17 +294,17 @@ export class StenoDictionary implements StenoDictionaryLike {
   }
 
   /**
-   * Create a new dictionary at the given path
+   * Create a new dictionary with the given identifier
    */
-  static create(path: string): StenoDictionary {
-    return new StenoDictionary({ path, readonly: false });
+  static create(identifier: string): StenoDictionary {
+    return new StenoDictionary({ identifier, readonly: false });
   }
 
   /**
    * Load a dictionary from a JSON file
    */
-  static loadFromJson(path: string, jsonContent: Record<string, string>): StenoDictionary {
-    const dict = new StenoDictionary({ path });
+  static loadFromJson(identifier: string, jsonContent: Record<string, string>): StenoDictionary {
+    const dict = new StenoDictionary({ identifier });
     
     // Normalize and insert entries
     const entries: Array<[string[], string]> = [];
@@ -469,11 +469,11 @@ export class StenoDictionaryCollection {
   }
 
   /**
-   * Get a dictionary by path
+   * Get a dictionary by identifier
    */
-  get(path: string): StenoDictionaryLike | null {
+  get(identifier: string): StenoDictionaryLike | null {
     for (const d of this._dicts) {
-      if (d.path === path) {
+      if (d.identifier === identifier) {
         return d;
       }
     }
@@ -498,11 +498,11 @@ export class StenoDictionaryCollection {
   }
 
   /**
-   * Iterator over dictionary paths
+   * Iterator over dictionary identifiers
    */
   *[Symbol.iterator](): Generator<string> {
     for (const d of this._dicts) {
-      yield d.path;
+      yield d.identifier;
     }
   }
 }

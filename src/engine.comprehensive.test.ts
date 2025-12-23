@@ -149,7 +149,7 @@ describe('StrippedPlover Comprehensive Tests', () => {
       await engine.handleRequest({
         id: 3,
         method: 'prioritize_dictionaries',
-        params: { paths: [mainPath] }
+        params: { identifiers: [mainPath] }
       });
 
       expect(await translate('TEFT')).toBe('main');
@@ -157,7 +157,7 @@ describe('StrippedPlover Comprehensive Tests', () => {
       await engine.handleRequest({
         id: 4,
         method: 'prioritize_dictionaries',
-        params: { paths: [userPath] }
+        params: { identifiers: [userPath] }
       });
 
       await engine.handleRequest({ id: 5, method: 'reset_state' });
@@ -181,7 +181,7 @@ describe('StrippedPlover Comprehensive Tests', () => {
       await engine.handleRequest({
         id: 2,
         method: 'set_dictionary_enabled',
-        params: { path: mainPath, enabled: false }
+        params: { identifier: mainPath, enabled: false }
       });
 
       await engine.handleRequest({ id: 3, method: 'reset_state' });
