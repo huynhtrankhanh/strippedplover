@@ -138,6 +138,7 @@ export class StrippedPlover {
   private soloEnabled: boolean;
   private soloPreviousEnabled: Map<string, boolean>;
   private soloHasRun: boolean;
+  private eventSink: ((event: Record<string, unknown>) => void) | null;
 
   // Commands that are not supported
   private static UNSUPPORTED_COMMANDS = new Set(['toggle', 'stop', 'resume', 'suspend', 'quit']);
@@ -151,6 +152,10 @@ export class StrippedPlover {
     this.soloEnabled = false;
     this.soloPreviousEnabled = new Map();
     this.soloHasRun = false;
+    this.eventSink = (event) => {
+      // Emit protocol events to STDOUT by default
+      console.log(JSON.stringify(event));
+    };
 
     this.startingStrokeState = {
       attach: true,
@@ -210,12 +215,16 @@ export class StrippedPlover {
         this.handleSetConfig(cmdline);
       } else if (commandName === 'priority_dict') {
         this.handlePriorityDict(this.parseSelectionList(cmdline));
+        this.emitDictionaryStateEvent();
       } else if (commandName === 'toggle_dict') {
         this.handleToggleDict(this.parseSelectionList(cmdline));
+        this.emitDictionaryStateEvent();
       } else if (commandName === 'solo_dict') {
         this.handleSoloDict(this.parseSelectionList(cmdline));
+        this.emitDictionaryStateEvent();
       } else if (commandName === 'end_solo_dict') {
         this.handleEndSoloDict();
+        this.emitDictionaryStateEvent();
       }
     } catch (e) {
       console.warn('Failed to handle engine command:', command, e);
@@ -352,6 +361,19 @@ export class StrippedPlover {
     }));
   }
 
+  private emitDictionaryStateEvent(): void {
+    if (!this.eventSink) return;
+    try {
+      this.eventSink({
+        event: 'dictionary_state',
+        dictionaries: this.describeDictionaries(),
+        solo: this.soloEnabled,
+      });
+    } catch {
+      // Ignore event emission errors
+    }
+  }
+
   private handlePriorityDict(paths: string[]): void {
     if (paths.length === 0) return;
     const updated = this.reprioritize(paths);
@@ -465,6 +487,9 @@ export class StrippedPlover {
           break;
         case 'list_dictionaries':
           result = this.listDictionaries();
+          break;
+        case 'get_dictionary_state':
+          result = this.getDictionaryState();
           break;
         case 'get_dictionary_entries':
           result = this.getDictionaryEntries(params);
@@ -755,6 +780,10 @@ export class StrippedPlover {
 
   private listDictionaries(): Record<string, unknown> {
     return { dictionaries: this.describeDictionaries() };
+  }
+
+  private getDictionaryState(): Record<string, unknown> {
+    return { dictionaries: this.describeDictionaries(), solo: this.soloEnabled };
   }
 
   private getDictionaryEntries(params: Record<string, unknown>): Record<string, unknown> {

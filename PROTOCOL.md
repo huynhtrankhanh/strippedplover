@@ -256,6 +256,14 @@ Dictionary name matching is suffix-based for prioritization and enable/disable o
 - **JSON dictionaries**: Store explicit stroke-to-translation entries. Writable at runtime.
 - **Python dictionaries**: Store Python code that implements lookup functions. Read-only at runtime.
 
+When dictionary state changes because of translation-driven `{PLOVER:...}` commands (e.g., `PRIORITY_DICT`, `TOGGLE_DICT`, `SOLO_DICT`, `END_SOLO_DICT`), Stripped Plover emits an asynchronous event to STDOUT:
+
+```json
+{"event":"dictionary_state","solo":false,"dictionaries":[{"path":"/configs/main.json","enabled":true,"readonly":false,"entries":123}]}
+```
+
+These events are only sent for translation-triggered changes and may arrive in between request/response lines.
+
 #### `remove_dictionary`
 
 Remove a dictionary from the engine.
@@ -448,6 +456,37 @@ List all loaded dictionaries.
 {
   "id": "7",
   "result": {
+    "dictionaries": [
+      {
+        "path": "/path/to/dictionary.json",
+        "enabled": true,
+        "readonly": false,
+        "entries": 12345
+      }
+    ]
+  }
+}
+```
+
+#### `get_dictionary_state`
+
+Return the full dictionary stack along with whether solo mode is active.
+
+**Request:**
+```json
+{
+  "id": "7b",
+  "method": "get_dictionary_state",
+  "params": {}
+}
+```
+
+**Response:**
+```json
+{
+  "id": "7b",
+  "result": {
+    "solo": false,
     "dictionaries": [
       {
         "path": "/path/to/dictionary.json",
