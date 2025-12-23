@@ -53,7 +53,7 @@ export interface DictionaryEntry {
 }
 
 export interface DictionaryInfo {
-  path: string;
+  identifier: string;
   enabled: boolean;
   readonly: boolean;
   entries: number;

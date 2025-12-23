@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { StrippedPlover } from './engine.js';
 import { StenoDictionary } from './dictionary/index.js';
 
-function createEngine(paths: string[]): StrippedPlover {
+function createEngine(identifiers: string[]): StrippedPlover {
   const engine = new StrippedPlover();
-  const dicts = paths.map(path => {
-    const dict = new StenoDictionary({ path: ':memory:' });
-    dict.path = path;
+  const dicts = identifiers.map(identifier => {
+    const dict = new StenoDictionary({ identifier: ':memory:' });
+    dict.identifier = identifier;
     return dict;
   });
   (engine as any).dictionaries.setDicts(dicts);
@@ -14,14 +14,14 @@ function createEngine(paths: string[]): StrippedPlover {
 }
 
 function getOrder(engine: StrippedPlover): string[] {
-  return ((engine as any).dictionaries.dicts as StenoDictionary[]).map(d => d.path);
+  return ((engine as any).dictionaries.dicts as StenoDictionary[]).map(d => d.identifier);
 }
 
 function getEnabled(engine: StrippedPlover): Record<string, boolean> {
   const dicts = ((engine as any).dictionaries.dicts as StenoDictionary[]);
   const result: Record<string, boolean> = {};
   for (const d of dicts) {
-    result[d.path] = d.enabled;
+    result[d.identifier] = d.enabled;
   }
   return result;
 }
@@ -33,7 +33,7 @@ describe('dictionary management RPC methods', () => {
     await engine.handleRequest({
       id: 1,
       method: 'prioritize_dictionaries',
-      params: { paths: ['commands.json', 'user.json'] },
+      params: { identifiers: ['commands.json', 'user.json'] },
     });
 
     expect(getOrder(engine)).toEqual(['commands.json', 'user.json', 'main.json']);
@@ -45,14 +45,14 @@ describe('dictionary management RPC methods', () => {
     await engine.handleRequest({
       id: 1,
       method: 'set_dictionary_enabled',
-      params: { path: 'user.json', enabled: false },
+      params: { identifier: 'user.json', enabled: false },
     });
     expect(getEnabled(engine)).toMatchObject({ 'main.json': true, 'user.json': false });
 
     await engine.handleRequest({
       id: 2,
       method: 'set_dictionary_enabled',
-      params: { path: 'user.json', enabled: true },
+      params: { identifier: 'user.json', enabled: true },
     });
     expect(getEnabled(engine)).toMatchObject({ 'main.json': true, 'user.json': true });
   });

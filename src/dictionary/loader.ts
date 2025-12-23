@@ -18,7 +18,7 @@ export type DictionaryType = 'json' | 'python';
  * Create a JSON dictionary from entries data
  */
 export function createJsonDictionary(name: string, data: Record<string, string>): StenoDictionary {
-  const dict = new StenoDictionary({ path: name });
+  const dict = new StenoDictionary({ identifier: name });
   
   // Convert entries with stroke normalization
   const entries: Array<[string[], string]> = [];
