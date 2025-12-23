@@ -695,8 +695,8 @@ function metaToAction(meta: string, ctx: FormatterContext): Action {
         finalizeAction(action, ctx);
         return action;
       }
-    } catch {
-      // Unknown meta, fall through
+    } catch (err) {
+      console.error(`Error executing meta "${metaName}":`, err);
     }
   }
 

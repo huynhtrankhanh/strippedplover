@@ -125,8 +125,8 @@ def __safe_reverse_lookup(value):
             }
           }
         }
-      } catch {
-        // Ignore enumeration errors; keep dictionary usable for lookups.
+      } catch (err) {
+        console.error('Error enumerating Python dictionary entries:', err);
       }
     }
 
@@ -250,8 +250,8 @@ def __safe_reverse_lookup(value):
           if (Array.isArray(parsed)) {
             return new Set(parsed.filter(Array.isArray));
           }
-        } catch {
-          // ignore parse errors
+        } catch (err) {
+          console.error('Error parsing reverse lookup result:', err);
         }
       }
       return new Set();
