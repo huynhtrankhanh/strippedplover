@@ -71,7 +71,7 @@ export class StenoDictionary implements StenoDictionaryLike {
     this._longestKey = 0;
 
     // Open SQLite database
-    this.db = new DatabaseSync(this._identifier === ':memory:' ? ':memory:' : this._identifier);
+    this.db = new DatabaseSync(this._identifier);
     
     // Initialize schema
     this.initSchema();
