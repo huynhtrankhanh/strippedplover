@@ -335,8 +335,8 @@ export class Translator {
         const maybePromise = macroFn(this, macro.stroke, macro.cmdline);
         await Promise.resolve(maybePromise);
       }
-    } catch {
-      // Unknown macro, ignore
+    } catch (err) {
+      console.error(`Error executing macro "${macro.name}":`, err);
     }
   }
 

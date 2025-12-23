@@ -272,8 +272,8 @@ export class StrippedPlover {
         spaceChar: String(spaceChar) 
       };
       this.applyStartingStrokeState();
-    } catch {
-      // Invalid syntax, ignore
+    } catch (err) {
+      console.error('Failed to parse set_config command:', err);
     }
   }
 
@@ -369,8 +369,8 @@ export class StrippedPlover {
         dictionaries: this.describeDictionaries(),
         solo: this.soloEnabled,
       });
-    } catch {
-      // Ignore event emission errors
+    } catch (err) {
+      console.error('Error emitting dictionary_state event:', err);
     }
   }
 
