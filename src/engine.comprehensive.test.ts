@@ -11,7 +11,7 @@ describe('StrippedPlover Comprehensive Tests', () => {
   let tempDir: string;
 
   beforeEach(() => {
-    engine = new StrippedPlover();
+    engine = new StrippedPlover(':memory:');
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'plover-test-'));
   });
 

@@ -4,6 +4,7 @@
  * This module implements the main engine that communicates via JSON line protocol.
  */
 
+import { DatabaseSync } from 'node:sqlite';
 import { Stroke, normalizeSteno } from './stroke.js';
 import { StenoDictionary, StenoDictionaryCollection, StenoDictionaryLike, createJsonDictionary, createPythonDictionary, PythonDictionary, DictionaryType } from './dictionary/index.js';
 import { Translator, Translation } from './translation.js';
@@ -139,12 +140,16 @@ export class StrippedPlover {
   private soloPreviousEnabled: Map<string, boolean>;
   private soloHasRun: boolean;
   private eventSink: ((event: Record<string, unknown>) => void) | null;
+  private db!: DatabaseSync;
 
   // Commands that are not supported
   private static UNSUPPORTED_COMMANDS = new Set(['toggle', 'stop', 'resume', 'suspend', 'quit']);
 
-  constructor() {
+  constructor(databasePath: string) {
+    this.initDatabase(databasePath);
     this.dictionaries = new StenoDictionaryCollection();
+    this.loadDictionaries();
+
     this.translator = new Translator();
     this.formatter = new Formatter();
     this.output = new TranslationOutputHandler(this);
@@ -180,6 +185,66 @@ export class StrippedPlover {
     this.translator.addListener((undo, doTrans, prev) => {
       this.formatter.format(undo, doTrans, prev);
     });
+  }
+
+  private initDatabase(path: string): void {
+    this.db = new DatabaseSync(path);
+    this.db.exec('PRAGMA foreign_keys = ON;');
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS dictionaries (
+        name TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        enabled BOOLEAN DEFAULT 1,
+        readonly BOOLEAN DEFAULT 0,
+        priority INTEGER,
+        python_code TEXT
+      );
+      CREATE TABLE IF NOT EXISTS entries (
+        dictionary TEXT,
+        stroke TEXT,
+        translation TEXT,
+        PRIMARY KEY (dictionary, stroke),
+        FOREIGN KEY (dictionary) REFERENCES dictionaries(name) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_translation ON entries(translation);
+      CREATE INDEX IF NOT EXISTS idx_dictionary ON entries(dictionary);
+    `);
+  }
+
+  private async loadDictionaries(): Promise<void> {
+    const stmt = this.db.prepare('SELECT * FROM dictionaries ORDER BY priority DESC');
+    const rows = stmt.all() as Array<{
+      name: string;
+      type: string;
+      enabled: number;
+      readonly: number;
+      python_code: string | null;
+    }>;
+
+    const dicts: StenoDictionaryLike[] = [];
+
+    for (const row of rows) {
+      if (row.type === 'json') {
+        const dict = new StenoDictionary(this.db, {
+          identifier: row.name,
+          enabled: Boolean(row.enabled),
+          readonly: Boolean(row.readonly),
+        });
+        dicts.push(dict);
+      } else if (row.type === 'python' && row.python_code) {
+        try {
+          const dict = await createPythonDictionary(row.name, row.python_code);
+          dict.enabled = Boolean(row.enabled);
+          // Python dictionaries are always readonly
+          dicts.push(dict);
+        } catch (e) {
+          console.error(`Failed to load python dictionary ${row.name}:`, e);
+        }
+      }
+    }
+
+    this.dictionaries.setDicts(dicts);
   }
 
   private setupSystem(): void {
@@ -369,16 +434,54 @@ export class StrippedPlover {
     }
   }
 
+  private updateDictionaryPriorityInDb(): void {
+    const stmt = this.db.prepare('UPDATE dictionaries SET priority = ? WHERE name = ?');
+    // We want the first dictionary in the array to have the highest priority number
+    const total = this.dictionaries.dicts.length;
+    this.db.exec('BEGIN TRANSACTION');
+    try {
+      this.dictionaries.dicts.forEach((d, i) => {
+        // Higher priority value = searched earlier
+        // In the collection array, index 0 is high priority.
+        // So we can use (total - i) as priority.
+        stmt.run(total - i, d.identifier);
+      });
+      this.db.exec('COMMIT');
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      console.error('Failed to update dictionary priorities:', e);
+    }
+  }
+
+  private updateDictionaryEnabledInDb(identifier: string, enabled: boolean): void {
+    const stmt = this.db.prepare('UPDATE dictionaries SET enabled = ? WHERE name = ?');
+    stmt.run(enabled ? 1 : 0, identifier);
+  }
+
   private handlePriorityDict(identifiers: string[]): void {
     if (identifiers.length === 0) return;
     const updated = this.reprioritize(identifiers);
     this.dictionaries.setDicts(updated);
+    this.updateDictionaryPriorityInDb();
   }
 
   private handleToggleDict(toggles: string[]): void {
     if (toggles.length === 0) return;
     const updated = this.applyToggleSpecs(toggles);
     this.dictionaries.setDicts(updated);
+
+    // Update all modified dictionaries in DB
+    this.db.exec('BEGIN TRANSACTION');
+    try {
+      const stmt = this.db.prepare('UPDATE dictionaries SET enabled = ? WHERE name = ?');
+      for (const dict of updated) {
+        stmt.run(dict.enabled ? 1 : 0, dict.identifier);
+      }
+      this.db.exec('COMMIT');
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      console.error('Failed to update enabled state:', e);
+    }
   }
 
   private handleSoloDict(toggles: string[]): void {
@@ -393,6 +496,7 @@ export class StrippedPlover {
 
     const updated = this.applyToggleSpecs(toggles);
     this.dictionaries.setDicts(updated);
+    // Note: Solo mode is temporary, we do NOT persist changes to DB.
   }
 
   private handleEndSoloDict(): void {
@@ -594,6 +698,8 @@ export class StrippedPlover {
     dicts[idx].enabled = enabled;
     this.dictionaries.setDicts(dicts);
 
+    this.updateDictionaryEnabledInDb(dicts[idx].identifier, enabled);
+
     return { status: 'ok', identifier: dicts[idx].identifier, enabled };
   }
 
@@ -632,6 +738,13 @@ export class StrippedPlover {
     }
 
     this.dictionaries.setDicts(dicts);
+
+    // Remove from DB
+    const stmt = this.db.prepare('DELETE FROM dictionaries WHERE name = ?');
+    stmt.run(name);
+
+    // Note: ON DELETE CASCADE on foreign key should handle entries removal
+
     return { status: 'ok', name };
   }
 
@@ -892,6 +1005,15 @@ export class StrippedPlover {
         this.dictionaries.setDicts(updated);
       }
 
+      // Persist to DB
+      const stmt = this.db.prepare(`
+        INSERT OR REPLACE INTO dictionaries (name, type, enabled, readonly, priority, python_code)
+        VALUES (?, 'python', ?, 1, ?, ?)
+      `);
+      // Use current priority or max+1? For now, we update priorities after insert
+      stmt.run(name, loaded.enabled ? 1 : 0, 0, pythonCode);
+      this.updateDictionaryPriorityInDb();
+
       return {
         status: 'ok',
         name,
@@ -906,14 +1028,26 @@ export class StrippedPlover {
       }
 
       let dictionary = this.dictionaries.get(name);
+      let isNew = false;
       
       if (!dictionary) {
+        isNew = true;
         // Create a new dictionary
-        dictionary = createJsonDictionary(name, {});
+        dictionary = createJsonDictionary(name, {}, this.db);
         const dicts = [...this.dictionaries.dicts, dictionary];
         this.dictionaries.setDicts(dicts);
       } else if (dictionary.readonly) {
         throw new Error(`Dictionary is read-only: ${name}`);
+      }
+
+      // Persist to DB if new
+      if (isNew) {
+         const stmt = this.db.prepare(`
+          INSERT OR REPLACE INTO dictionaries (name, type, enabled, readonly, priority)
+          VALUES (?, 'json', ?, ?, ?)
+        `);
+        stmt.run(name, dictionary.enabled ? 1 : 0, dictionary.readonly ? 1 : 0, 0);
+        this.updateDictionaryPriorityInDb();
       }
 
       if (!merge) {

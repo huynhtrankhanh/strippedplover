@@ -3,10 +3,25 @@ import { StrippedPlover } from './engine.js';
 import { StenoDictionary } from './dictionary/index.js';
 
 function createEngine(identifiers: string[]): StrippedPlover {
-  const engine = new StrippedPlover();
+  const engine = new StrippedPlover(':memory:');
+
+  // We need to use createJsonDictionary or similar to get proper DB injection
+  // Or hack it by getting the db from engine
+  const db = (engine as any).db;
+
   const dicts = identifiers.map(identifier => {
-    const dict = new StenoDictionary({ identifier: ':memory:' });
-    dict.identifier = identifier;
+    const dict = new StenoDictionary(db, { identifier });
+    // In real app, we would update DB. But for this unit test helper,
+    // we just want to set the in-memory collection state?
+    // Wait, the new engine relies on DB state for some operations (like persistence).
+    // But StenoDictionaryCollection is in memory.
+    // The RPC handlers update DB.
+
+    // We should populate the DB too for consistency if we want full testing.
+    // Insert into dictionaries table
+    const stmt = db.prepare('INSERT OR IGNORE INTO dictionaries (name, type, enabled, readonly, priority) VALUES (?, ?, ?, ?, ?)');
+    stmt.run(identifier, 'json', 1, 0, 0);
+
     return dict;
   });
   (engine as any).dictionaries.setDicts(dicts);

@@ -5,6 +5,7 @@
  * All dictionary data is stored in SQLite and passed via the RPC protocol.
  */
 
+import { DatabaseSync } from 'node:sqlite';
 import { StenoDictionary, StenoDictionaryLike } from './steno-dictionary.js';
 import { normalizeSteno } from '../stroke.js';
 import { PythonDictionary } from './python-dictionary.js';
@@ -17,8 +18,8 @@ export type DictionaryType = 'json' | 'python';
 /**
  * Create a JSON dictionary from entries data
  */
-export function createJsonDictionary(name: string, data: Record<string, string>): StenoDictionary {
-  const dict = new StenoDictionary({ identifier: name });
+export function createJsonDictionary(name: string, data: Record<string, string>, db: DatabaseSync): StenoDictionary {
+  const dict = new StenoDictionary(db, { identifier: name });
   
   // Convert entries with stroke normalization
   const entries: Array<[string[], string]> = [];
@@ -39,8 +40,8 @@ export function createJsonDictionary(name: string, data: Record<string, string>)
 /**
  * Create a new empty dictionary
  */
-export function createDictionary(name: string): StenoDictionary {
-  return StenoDictionary.create(name);
+export function createDictionary(name: string, db: DatabaseSync): StenoDictionary {
+  return new StenoDictionary(db, { identifier: name, readonly: false });
 }
 
 /**

@@ -31,7 +31,7 @@ beforeAll(() => {
 
 describe('STDIO end-to-end', () => {
   it('handles import, translate, export, quit over STDIO with JSON dictionary', async () => {
-    const proc = spawn('node', ['dist/index.js'], { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] });
+    const proc = spawn('node', ['dist/index.js', ':memory:'], { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] });
     const lines: string[] = [];
 
     const rl = readline.createInterface({ input: proc.stdout });
@@ -82,7 +82,7 @@ describe('STDIO end-to-end', () => {
   }, 60000);
 
   it('handles import, translate, export, quit over STDIO with Python dictionary', async () => {
-    const proc = spawn('node', ['dist/index.js'], { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] });
+    const proc = spawn('node', ['dist/index.js', ':memory:'], { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] });
     const lines: string[] = [];
 
     const rl = readline.createInterface({ input: proc.stdout });

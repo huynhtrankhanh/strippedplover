@@ -41,10 +41,12 @@ npm run build
 ## Usage
 
 ```bash
-npm start
+npm start -- <database-path>
 # or
-node dist/index.js
+node dist/index.js <database-path>
 ```
+
+The application requires a database path as an argument. You can use `:memory:` for an in-memory database or provide a file path for persistence.
 
 The engine reads JSON requests from stdin and writes JSON responses to stdout.
 
