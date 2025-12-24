@@ -12,7 +12,13 @@ import { StrippedPlover, ProtocolRequest, ProtocolResponse } from './engine.js';
  * Main function
  */
 async function main(): Promise<void> {
-  const engine = new StrippedPlover();
+  const dbPath = process.argv[2];
+  if (!dbPath) {
+    console.error('Usage: strippedplover <database-path>');
+    process.exit(1);
+  }
+
+  const engine = new StrippedPlover(dbPath);
 
   // Print ready message
   console.log(JSON.stringify({ status: 'ready' }));

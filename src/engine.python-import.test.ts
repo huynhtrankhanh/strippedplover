@@ -3,7 +3,7 @@ import { StrippedPlover } from './engine.js';
 
 describe('engine python dictionary import/export', () => {
   it('imports and exports python dictionaries via protocol', async () => {
-    const engine = new StrippedPlover();
+    const engine = new StrippedPlover(':memory:');
 
     const pythonCode = `
 LONGEST_KEY = 2
@@ -54,7 +54,7 @@ def reverse_lookup(value):
   }, 60000);
 
   it('imports and exports JSON dictionaries via protocol', async () => {
-    const engine = new StrippedPlover();
+    const engine = new StrippedPlover(':memory:');
 
     const importResponse = await engine.handleRequest({
       id: '1',

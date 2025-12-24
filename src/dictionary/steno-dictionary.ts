@@ -5,25 +5,8 @@
  * the Node.js built-in SQLite module for fast entry insertion and updates.
  */
 
+import { DatabaseSync } from 'node:sqlite';
 import { Stroke, normalizeSteno } from '../stroke.js';
-
-type DatabaseSyncInstance = {
-  exec(sql: string): void;
-  prepare(sql: string): {
-    get(...args: unknown[]): any;
-    all(...args: unknown[]): Array<any>;
-    run(...args: unknown[]): { changes?: number | bigint };
-  };
-  close(): void;
-};
-
-type DatabaseSyncCtor = (new (...args: any[]) => DatabaseSyncInstance) | null;
-let DatabaseSync: DatabaseSyncCtor = null;
-try {
-  ({ DatabaseSync } = await import('node:sqlite'));
-} catch {
-  DatabaseSync = null;
-}
 
 export interface StenoDictionaryLike {
   identifier: string;
@@ -53,42 +36,23 @@ export interface StenoDictionaryOptions {
  * A steno dictionary backed by SQLite
  */
 export class StenoDictionary implements StenoDictionaryLike {
-  private db: DatabaseSyncInstance;
+  private db: DatabaseSync;
   private _identifier: string;
   private _readonly: boolean;
   private _enabled: boolean;
   private _timestamp: number;
   private _longestKey: number;
 
-  constructor(options: StenoDictionaryOptions = {}) {
-    if (!DatabaseSync) {
-      throw new Error('node:sqlite built-in module is required to use StenoDictionary');
-    }
-    this._identifier = options.identifier ?? ':memory:';
+  constructor(db: DatabaseSync, options: StenoDictionaryOptions = {}) {
+    this.db = db;
+    this._identifier = options.identifier ?? 'unknown';
     this._readonly = options.readonly ?? false;
     this._enabled = options.enabled ?? true;
     this._timestamp = Date.now();
     this._longestKey = 0;
-
-    // Open SQLite database
-    this.db = new DatabaseSync(this._identifier);
     
-    // Initialize schema
-    this.initSchema();
-  }
-
-  private initSchema(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS entries (
-        stroke TEXT PRIMARY KEY,
-        translation TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_translation ON entries(translation);
-      CREATE TABLE IF NOT EXISTS metadata (
-        key TEXT PRIMARY KEY,
-        value TEXT
-      );
-    `);
+    // Recalculate longest key on init
+    this.recalculateLongestKey();
   }
 
   get identifier(): string {
@@ -131,8 +95,8 @@ export class StenoDictionary implements StenoDictionaryLike {
    * Get the number of entries in the dictionary
    */
   get length(): number {
-    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM entries');
-    const result = stmt.get() as { count: number };
+    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM entries WHERE dictionary = ?');
+    const result = stmt.get(this._identifier) as { count: number };
     return result.count;
   }
 
@@ -141,8 +105,8 @@ export class StenoDictionary implements StenoDictionaryLike {
    */
   get(strokeTuple: string[]): string | null {
     const stroke = strokeTuple.join('/');
-    const stmt = this.db.prepare('SELECT translation FROM entries WHERE stroke = ?');
-    const result = stmt.get(stroke) as { translation: string } | undefined;
+    const stmt = this.db.prepare('SELECT translation FROM entries WHERE stroke = ? AND dictionary = ?');
+    const result = stmt.get(stroke, this._identifier) as { translation: string } | undefined;
     return result?.translation ?? null;
   }
 
@@ -157,13 +121,14 @@ export class StenoDictionary implements StenoDictionaryLike {
     const stroke = strokeTuple.join('/');
     
     // Delete existing entry if any (to update reverse lookup)
-    this.delete(strokeTuple);
+    // this.delete(strokeTuple); // No longer needed as INSERT OR REPLACE handles it,
+    // but wait, INSERT OR REPLACE on (dictionary, stroke) is sufficient.
 
     // Insert new entry
     const stmt = this.db.prepare(
-      'INSERT OR REPLACE INTO entries (stroke, translation) VALUES (?, ?)'
+      'INSERT OR REPLACE INTO entries (dictionary, stroke, translation) VALUES (?, ?, ?)'
     );
-    stmt.run(stroke, translation);
+    stmt.run(this._identifier, stroke, translation);
 
     // Update longest key
     if (strokeTuple.length > this._longestKey) {
@@ -180,8 +145,8 @@ export class StenoDictionary implements StenoDictionaryLike {
     }
 
     const stroke = strokeTuple.join('/');
-    const stmt = this.db.prepare('DELETE FROM entries WHERE stroke = ?');
-    const result = stmt.run(stroke);
+    const stmt = this.db.prepare('DELETE FROM entries WHERE stroke = ? AND dictionary = ?');
+    const result = stmt.run(stroke, this._identifier);
     
     // Recalculate longest key if needed
     if (strokeTuple.length === this._longestKey) {
@@ -203,9 +168,9 @@ export class StenoDictionary implements StenoDictionaryLike {
    */
   private recalculateLongestKey(): void {
     const stmt = this.db.prepare(
-      "SELECT MAX(LENGTH(stroke) - LENGTH(REPLACE(stroke, '/', '')) + 1) as maxLen FROM entries"
+      "SELECT MAX(LENGTH(stroke) - LENGTH(REPLACE(stroke, '/', '')) + 1) as maxLen FROM entries WHERE dictionary = ?"
     );
-    const result = stmt.get() as { maxLen: number | null };
+    const result = stmt.get(this._identifier) as { maxLen: number | null };
     this._longestKey = result.maxLen ?? 0;
   }
 
@@ -213,8 +178,8 @@ export class StenoDictionary implements StenoDictionaryLike {
    * Get all entries as an iterator
    */
   *entries(): Generator<[string[], string]> {
-    const stmt = this.db.prepare('SELECT stroke, translation FROM entries');
-    for (const row of stmt.all() as Array<{ stroke: string; translation: string }>) {
+    const stmt = this.db.prepare('SELECT stroke, translation FROM entries WHERE dictionary = ?');
+    for (const row of stmt.all(this._identifier) as Array<{ stroke: string; translation: string }>) {
       yield [row.stroke.split('/'), row.translation];
     }
   }
@@ -233,7 +198,8 @@ export class StenoDictionary implements StenoDictionaryLike {
     if (this._readonly) {
       throw new Error('Dictionary is read-only');
     }
-    this.db.exec('DELETE FROM entries');
+    const stmt = this.db.prepare('DELETE FROM entries WHERE dictionary = ?');
+    stmt.run(this._identifier);
     this._longestKey = 0;
   }
 
@@ -246,7 +212,7 @@ export class StenoDictionary implements StenoDictionaryLike {
     }
 
     const insertStmt = this.db.prepare(
-      'INSERT OR REPLACE INTO entries (stroke, translation) VALUES (?, ?)'
+      'INSERT OR REPLACE INTO entries (dictionary, stroke, translation) VALUES (?, ?, ?)'
     );
 
     // Use a transaction for bulk inserts
@@ -254,7 +220,7 @@ export class StenoDictionary implements StenoDictionaryLike {
     try {
       for (const [strokeTuple, translation] of entries) {
         const stroke = strokeTuple.join('/');
-        insertStmt.run(stroke, translation);
+        insertStmt.run(this._identifier, stroke, translation);
         if (strokeTuple.length > this._longestKey) {
           this._longestKey = strokeTuple.length;
         }
@@ -270,8 +236,8 @@ export class StenoDictionary implements StenoDictionaryLike {
    * Reverse lookup - find all strokes that produce a translation
    */
   reverseLookup(translation: string): Set<string[]> {
-    const stmt = this.db.prepare('SELECT stroke FROM entries WHERE translation = ?');
-    const results = stmt.all(translation) as Array<{ stroke: string }>;
+    const stmt = this.db.prepare('SELECT stroke FROM entries WHERE translation = ? AND dictionary = ?');
+    const results = stmt.all(translation, this._identifier) as Array<{ stroke: string }>;
     return new Set(results.map(r => r.stroke.split('/')));
   }
 
@@ -279,10 +245,16 @@ export class StenoDictionary implements StenoDictionaryLike {
    * Case-insensitive reverse lookup
    */
   caseReverseLookup(translation: string): Set<string> {
+    // Note: this query ignores the dictionary filter?
+    // Original implementation: SELECT DISTINCT translation FROM entries WHERE LOWER(translation) = LOWER(?)
+    // If we have multiple dictionaries in the same table, we should probably filter by dictionary too if we want
+    // to strictly scope it to this dictionary.
+    // However, caseReverseLookup returns a Set<string> of translations that match case-insensitively.
+
     const stmt = this.db.prepare(
-      'SELECT DISTINCT translation FROM entries WHERE LOWER(translation) = LOWER(?)'
+      'SELECT DISTINCT translation FROM entries WHERE LOWER(translation) = LOWER(?) AND dictionary = ?'
     );
-    const results = stmt.all(translation) as Array<{ translation: string }>;
+    const results = stmt.all(translation, this._identifier) as Array<{ translation: string }>;
     return new Set(results.map(r => r.translation));
   }
 
@@ -290,36 +262,7 @@ export class StenoDictionary implements StenoDictionaryLike {
    * Close the database connection
    */
   close(): void {
-    this.db.close();
-  }
-
-  /**
-   * Create a new dictionary with the given identifier
-   */
-  static create(identifier: string): StenoDictionary {
-    return new StenoDictionary({ identifier, readonly: false });
-  }
-
-  /**
-   * Load a dictionary from a JSON file
-   */
-  static loadFromJson(identifier: string, jsonContent: Record<string, string>): StenoDictionary {
-    const dict = new StenoDictionary({ identifier });
-    
-    // Normalize and insert entries
-    const entries: Array<[string[], string]> = [];
-    for (const [stroke, translation] of Object.entries(jsonContent)) {
-      try {
-        const normalizedStroke = normalizeSteno(stroke, false);
-        entries.push([normalizedStroke, translation]);
-      } catch {
-        // Skip invalid strokes
-        entries.push([stroke.split('/'), translation]);
-      }
-    }
-    
-    dict.update(entries);
-    return dict;
+    // Shared database connection is closed by the engine
   }
 
   /**
