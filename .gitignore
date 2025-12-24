@@ -1,34 +1,5 @@
-# Cache.
-/.cache/
-
-# Build artifacts
-/dist/
-
-# Dependencies
-/node_modules/
-
-# Plover: when run in portable mode from source.
-/*.rtf
-/plover.cfg
-/plover.log
-/steno-notes-*.txt
-/strokes.log
-
-# Plover: build artifacts.
-news_draft.md
-notes.md
-
-# VSCode
-/.vscode/
-
-# macOS
+target/
+node_modules/
+dist/
 .DS_Store
-
-# Test dictionary files (SQLite)
-my-json-dict
-user-dict
-python-dict
-custom-python
-
-# vim: ft=cfg
-test.json
+*.log
