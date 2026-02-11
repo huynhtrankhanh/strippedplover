@@ -213,7 +213,7 @@ export type TranslatorListener = (
  * Translator - converts strokes to translations
  */
 export class Translator {
-  private _undoLength = 0;
+  private _undoLength = Number.POSITIVE_INFINITY;
   private _dictionary: StenoDictionaryCollection;
   private _listeners: Set<TranslatorListener> = new Set();
   private _state: TranslatorState = new TranslatorState();

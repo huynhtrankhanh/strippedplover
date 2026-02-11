@@ -31,7 +31,4 @@ export function undo(translator: Translator, stroke: Stroke, cmdline: string): v
       return;
     }
   }
-
-  // No more buffer to delete from - send platform-specific back command
-  translator.flush([new Translation([stroke], BACK_STRING)]);
 }
