@@ -179,7 +179,7 @@ export class StenoDictionary implements StenoDictionaryLike {
    */
   *entries(): Generator<[string[], string]> {
     const stmt = this.db.prepare('SELECT stroke, translation FROM entries WHERE dictionary = ?');
-    for (const row of stmt.all(this._identifier) as Array<{ stroke: string; translation: string }>) {
+    for (const row of stmt.iterate(this._identifier) as Iterable<{ stroke: string; translation: string }>) {
       yield [row.stroke.split('/'), row.translation];
     }
   }
@@ -217,14 +217,16 @@ export class StenoDictionary implements StenoDictionaryLike {
 
     // Use a transaction for bulk inserts
     this.db.exec('BEGIN TRANSACTION');
+    let longestKey = this._longestKey;
     try {
       for (const [strokeTuple, translation] of entries) {
         const stroke = strokeTuple.join('/');
         insertStmt.run(this._identifier, stroke, translation);
-        if (strokeTuple.length > this._longestKey) {
-          this._longestKey = strokeTuple.length;
+        if (strokeTuple.length > longestKey) {
+          longestKey = strokeTuple.length;
         }
       }
+      this._longestKey = longestKey;
       this.db.exec('COMMIT');
     } catch (e) {
       this.db.exec('ROLLBACK');

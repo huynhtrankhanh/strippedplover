@@ -22,18 +22,18 @@ export function createJsonDictionary(name: string, data: Record<string, string>,
   const dict = new StenoDictionary(db, { identifier: name });
   
   // Convert entries with stroke normalization
-  const entries: Array<[string[], string]> = [];
-  for (const [stroke, translation] of Object.entries(data)) {
-    try {
-      const normalizedStroke = normalizeSteno(stroke, false);
-      entries.push([normalizedStroke, translation]);
-    } catch {
-      // If normalization fails, use raw stroke
-      entries.push([stroke.split('/'), translation]);
+  function* normalizedEntries(): Generator<[string[], string]> {
+    for (const [stroke, translation] of Object.entries(data)) {
+      try {
+        yield [normalizeSteno(stroke, false), translation];
+      } catch {
+        // If normalization fails, use raw stroke
+        yield [stroke.split('/'), translation];
+      }
     }
   }
-  
-  dict.update(entries);
+
+  dict.update(normalizedEntries());
   return dict;
 }
 

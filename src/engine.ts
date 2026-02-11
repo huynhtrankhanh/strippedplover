@@ -1054,13 +1054,14 @@ export class StrippedPlover {
         dictionary.clear();
       }
 
-      // Import entries
-      const entries: Array<[string[], string]> = [];
-      for (const [stroke, translation] of Object.entries(data)) {
-        const strokeTuple = normalizeSteno(stroke, false);
-        entries.push([strokeTuple, translation]);
+      // Import entries with streaming normalization to avoid large intermediate arrays
+      function* normalizedEntries(): Generator<[string[], string]> {
+        for (const [stroke, translation] of Object.entries(data)) {
+          yield [normalizeSteno(stroke, false), translation];
+        }
       }
-      dictionary.update(entries);
+
+      dictionary.update(normalizedEntries());
 
       return {
         status: 'ok',
