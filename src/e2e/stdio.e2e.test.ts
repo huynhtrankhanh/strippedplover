@@ -53,6 +53,7 @@ describe('STDIO end-to-end', () => {
         }) + '\n'
       );
       const importResp = JSON.parse(await waitForLine(lines));
+      expect(importResp.id).toBe('1');
       expect(importResp.result?.status).toBe('ok');
       expect(importResp.result?.entries).toBe(2);
       expect(importResp.result?.type).toBe('json');
@@ -61,6 +62,7 @@ describe('STDIO end-to-end', () => {
         JSON.stringify({ id: '2', method: 'translate', params: { stroke: 'TEFT' } }) + '\n'
       );
       const translateResp = JSON.parse(await waitForLine(lines));
+      expect(translateResp.id).toBe('2');
       const preedit = translateResp.result?.output?.[0];
       expect(preedit?.type).toBe('preedit');
       expect(typeof preedit?.text === 'string' ? preedit.text.trim() : undefined).toBe('test');
@@ -69,11 +71,13 @@ describe('STDIO end-to-end', () => {
         JSON.stringify({ id: '3', method: 'export_dictionary', params: { name: 'user-dict' } }) + '\n'
       );
       const exportResp = JSON.parse(await waitForLine(lines));
+      expect(exportResp.id).toBe('3');
       expect(exportResp.result?.type).toBe('json');
       expect(exportResp.result?.data).toEqual({ TEFT: 'test', 'HEL/HROE': 'hello' });
 
       proc.stdin.write(JSON.stringify({ id: '4', method: 'quit', params: {} }) + '\n');
       const quitResp = JSON.parse(await waitForLine(lines));
+      expect(quitResp.id).toBe('4');
       expect(quitResp.result?.status).toBe('ok');
     } finally {
       proc.kill();
@@ -118,6 +122,7 @@ def lookup(key):
         }) + '\n'
       );
       const importResp = JSON.parse(await waitForLine(lines, 30000));
+      expect(importResp.id).toBe('1');
       expect(importResp.result?.status).toBe('ok');
       expect(importResp.result?.entries).toBe(2);
       expect(importResp.result?.type).toBe('python');
@@ -126,6 +131,7 @@ def lookup(key):
         JSON.stringify({ id: '2', method: 'translate', params: { stroke: 'TEFT' } }) + '\n'
       );
       const translateResp = JSON.parse(await waitForLine(lines));
+      expect(translateResp.id).toBe('2');
       const preedit = translateResp.result?.output?.[0];
       expect(preedit?.type).toBe('preedit');
       expect(typeof preedit?.text === 'string' ? preedit.text.trim() : undefined).toBe('test');
@@ -134,11 +140,13 @@ def lookup(key):
         JSON.stringify({ id: '3', method: 'export_dictionary', params: { name: 'python-dict' } }) + '\n'
       );
       const exportResp = JSON.parse(await waitForLine(lines));
+      expect(exportResp.id).toBe('3');
       expect(exportResp.result?.type).toBe('python');
       expect(exportResp.result?.pythonCode).toBe(pythonCode);
 
       proc.stdin.write(JSON.stringify({ id: '4', method: 'quit', params: {} }) + '\n');
       const quitResp = JSON.parse(await waitForLine(lines));
+      expect(quitResp.id).toBe('4');
       expect(quitResp.result?.status).toBe('ok');
     } finally {
       proc.kill();

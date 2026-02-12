@@ -32,6 +32,7 @@ describe('StrippedPlover Comprehensive Tests', () => {
       method: 'translate',
       params: { stroke }
     });
+    expect(res.id).toBe(1);
     const output = (res.result as any).output as OutputElement[];
     return output.map(o => o.text || '').join('');
   }
@@ -42,6 +43,7 @@ describe('StrippedPlover Comprehensive Tests', () => {
       method: 'translate',
       params: { stroke }
     });
+    expect(res.id).toBe(1);
     return (res.result as any).output as OutputElement[];
   }
 
@@ -59,6 +61,8 @@ describe('StrippedPlover Comprehensive Tests', () => {
           }
         }
       });
+      const state = await engine.handleRequest({ id: 99, method: 'get_dictionary_state' });
+      expect(state.id).toBe(99);
 
       await engine.handleRequest({
         id: 2,
