@@ -5,7 +5,7 @@
  * the Node.js built-in SQLite module for fast entry insertion and updates.
  */
 
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from '../lmdb-database.js';
 import { Stroke, normalizeSteno } from '../stroke.js';
 
 export interface StenoDictionaryLike {

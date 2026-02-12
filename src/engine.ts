@@ -4,7 +4,7 @@
  * This module implements the main engine that communicates via JSON line protocol.
  */
 
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from './lmdb-database.js';
 import { Stroke, normalizeSteno } from './stroke.js';
 import { StenoDictionary, StenoDictionaryCollection, StenoDictionaryLike, createJsonDictionary, createPythonDictionary, PythonDictionary, DictionaryType } from './dictionary/index.js';
 import { Translator, Translation } from './translation.js';

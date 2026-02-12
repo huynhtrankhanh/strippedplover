@@ -5,7 +5,7 @@
  * All dictionary data is stored in SQLite and passed via the RPC protocol.
  */
 
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from '../lmdb-database.js';
 import { StenoDictionary, StenoDictionaryLike } from './steno-dictionary.js';
 import { normalizeSteno } from '../stroke.js';
 import { PythonDictionary } from './python-dictionary.js';
