@@ -2,7 +2,7 @@
  * SQLite-backed Steno Dictionary
  * 
  * This module provides a steno dictionary implementation backed by
- * the Node.js built-in SQLite module for fast entry insertion and updates.
+ * LMDB for fast entry insertion and updates.
  */
 
 import { DatabaseSync } from '../lmdb-database.js';

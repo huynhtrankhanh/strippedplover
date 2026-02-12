@@ -122,7 +122,7 @@ export class DatabaseSync {
       start: entryRangeStart(name),
       end: entryRangeEnd(name),
     })) {
-      this.entries.remove(key as Buffer);
+      this.entries.removeSync(key as Buffer);
     }
   }
 
@@ -152,8 +152,8 @@ export class DatabaseSync {
 
   countEntries(dictionary: string): number {
     let count = 0;
-    for (const _ of this.iterateEntries(dictionary)) {
-      count++;
+    for (const entry of this.iterateEntries(dictionary)) {
+      if (entry) count++;
     }
     return count;
   }
@@ -171,8 +171,8 @@ export class DatabaseSync {
 
   reverseLookup(dictionary: string, translation: string): string[] {
     const results: string[] = [];
-    for (const { stroke, translation: value } of this.iterateEntries(dictionary)) {
-      if (value === translation) {
+    for (const { stroke, translation: entryTranslation } of this.iterateEntries(dictionary)) {
+      if (entryTranslation === translation) {
         results.push(stroke);
       }
     }
@@ -182,9 +182,9 @@ export class DatabaseSync {
   caseReverseLookup(dictionary: string, translation: string): string[] {
     const target = translation.toLowerCase();
     const results: string[] = [];
-    for (const { translation: value } of this.iterateEntries(dictionary)) {
-      if (value.toLowerCase() === target) {
-        results.push(value);
+    for (const { translation: entryTranslation } of this.iterateEntries(dictionary)) {
+      if (entryTranslation.toLowerCase() === target) {
+        results.push(entryTranslation);
       }
     }
     return Array.from(new Set(results));
@@ -278,10 +278,12 @@ class LmdbStatement {
   get(...args: unknown[]): Record<string, unknown> | undefined {
     switch (this.kind) {
       case 'select-dictionaries': {
-    const rows = this.store.getDictionaries();
-    const sorted = rows.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-    return sorted[0];
-  }
+        const rows = this.store.getDictionaries();
+        return rows.reduce<DictionaryMeta & { name: string } | undefined>(
+          (max, row) => ((row.priority ?? 0) > (max?.priority ?? 0) ? row : max),
+          rows[0]
+        );
+      }
       case 'count-entries': {
         const [dictionary] = args as [string];
         return { count: this.store.countEntries(dictionary) };

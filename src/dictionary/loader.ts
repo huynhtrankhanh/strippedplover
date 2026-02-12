@@ -2,7 +2,7 @@
  * Dictionary Loading Module
  * 
  * Handles creating dictionaries from in-memory data (no filesystem access).
- * All dictionary data is stored in SQLite and passed via the RPC protocol.
+ * All dictionary data is stored in LMDB and passed via the RPC protocol.
  */
 
 import { DatabaseSync } from '../lmdb-database.js';
