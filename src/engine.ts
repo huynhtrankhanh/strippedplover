@@ -141,6 +141,7 @@ export class StrippedPlover {
   private soloHasRun: boolean;
   private eventSink: ((event: Record<string, unknown>) => void) | null;
   private db!: DatabaseSync;
+  private loadPromise: Promise<void>;
 
   // Commands that are not supported
   private static UNSUPPORTED_COMMANDS = new Set(['toggle', 'stop', 'resume', 'suspend', 'quit']);
@@ -148,7 +149,7 @@ export class StrippedPlover {
   constructor(databasePath: string) {
     this.initDatabase(databasePath);
     this.dictionaries = new StenoDictionaryCollection();
-    this.loadDictionaries();
+    this.loadPromise = this.loadDictionaries();
 
     this.translator = new Translator();
     this.formatter = new Formatter();
@@ -535,6 +536,8 @@ export class StrippedPlover {
     const method = request.method ?? '';
     const params = request.params ?? {};
 
+    await this.loadPromise;
+
     try {
       let result: Record<string, unknown>;
 
@@ -579,7 +582,7 @@ export class StrippedPlover {
           result = this.updateEntry(params);
           break;
         case 'lookup':
-          result = this.lookup(params);
+          result = await this.lookup(params);
           break;
         case 'reverse_lookup':
           result = await this.reverseLookup(params);
@@ -857,14 +860,14 @@ export class StrippedPlover {
     return { status: 'ok', stroke: strokeTuple.join('/'), translation };
   }
 
-  private lookup(params: Record<string, unknown>): Record<string, unknown> {
+  private async lookup(params: Record<string, unknown>): Promise<Record<string, unknown>> {
     const stroke = params.stroke as string;
     if (!stroke) {
       throw new Error('Stroke is required');
     }
 
     const strokeTuple = normalizeSteno(stroke, false);
-    const translation = this.dictionaries.lookup(strokeTuple);
+    const translation = await this.dictionaries.lookup(strokeTuple);
 
     return {
       stroke: strokeTuple.join('/'),
