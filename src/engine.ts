@@ -531,7 +531,7 @@ export class StrippedPlover {
   }
 
   async handleRequest(request: ProtocolRequest): Promise<ProtocolResponse & { quit?: boolean }> {
-    const requestId = request.id;
+    const requestId = request.id ?? null;
     const method = request.method ?? '';
     const params = request.params ?? {};
 
