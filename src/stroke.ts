@@ -20,12 +20,14 @@ let config: StrokeConfig | null = null;
 let keyOrder: Map<string, number> = new Map();
 let reverseNumbers: Map<string, string> = new Map();
 let implicitHyphens: Set<string> = new Set();
+const normalizeCache: Map<string, string> = new Map();
 
 /**
  * Setup the stroke system with the given configuration
  */
 export function setupStroke(cfg: StrokeConfig): void {
   config = cfg;
+  normalizeCache.clear();
   
   // Build key order map
   keyOrder = new Map();
@@ -148,8 +150,15 @@ export class Stroke {
    * Normalize a single stroke string
    */
   static normalizeStroke(steno: string, strict = true): string {
+    const cached = normalizeCache.get(steno);
+    if (cached !== undefined) {
+      return cached;
+    }
+
     try {
-      return Stroke.fromSteno(steno).rtfcre;
+      const normalized = Stroke.fromSteno(steno).rtfcre;
+      normalizeCache.set(steno, normalized);
+      return normalized;
     } catch (e) {
       if (strict) throw e;
       return steno;
