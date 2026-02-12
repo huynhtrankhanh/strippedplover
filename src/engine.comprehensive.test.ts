@@ -190,6 +190,36 @@ describe('StrippedPlover Comprehensive Tests', () => {
     });
   });
 
+  describe('Undo behavior', () => {
+    it('reverts to previous preedit without emitting backspace keypresses', async () => {
+      await engine.handleRequest({
+        id: 1,
+        method: 'import_dictionary',
+        params: {
+          name: getDictPath('main'),
+          type: 'json',
+          data: {
+            'KP': 'one',
+            'TK': 'two'
+          }
+        }
+      });
+
+      await translate('KP');
+      await translate('TK');
+
+      const afterFirstUndo = await translateRaw('*');
+      const firstPreedit = afterFirstUndo.find(o => o.type === 'preedit');
+      expect(firstPreedit?.text?.trim()).toBe('one');
+      expect(afterFirstUndo.some(o => o.type === 'keypress')).toBe(false);
+
+      const afterSecondUndo = await translateRaw('*');
+      expect(afterSecondUndo.some(o => o.type === 'keypress')).toBe(false);
+      const secondPreedit = afterSecondUndo.find(o => o.type === 'preedit');
+      expect((secondPreedit?.text ?? '').trim()).toBe('');
+    });
+  });
+
   describe('Solo Mode', () => {
     it('enters and exits solo mode', async () => {
       const d1 = getDictPath('d1');
