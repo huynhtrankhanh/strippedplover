@@ -9,7 +9,7 @@ describe('Rope treap', () => {
     system.setup('English Stenotype');
   });
 
-  it('derives strings through parent chains without storing full copies', () => {
+  it('concatenates strings through parent rope and appended text', () => {
     const base = new Translation([Stroke.fromInteger(1)], 'base');
     const extendedRope = Rope.append(base.englishDerivation, ' suffix');
     const extended = new Translation([Stroke.fromInteger(2)], extendedRope);

@@ -90,5 +90,5 @@ export function setRopeSeed(seed: number): void {
 
 function nextPriority(): number {
   _seed = (_seed * 1664525 + 1013904223) >>> 0;
-  return _seed / 0xffffffff;
+  return _seed / 0x100000000;
 }
