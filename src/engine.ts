@@ -93,10 +93,9 @@ class TranslationOutputHandler {
   sendBackspaces(count: number): void {
     if (count <= 0) return;
     const len = this.currentText.length;
+    if (len === 0) return;
     const remove = Math.min(len, count);
-    if (remove > 0) {
-      this.currentText = this.currentText.delete(len - remove, len);
-    }
+    this.currentText = this.currentText.delete(len - remove, len);
   }
 
   sendString(text: string): void {

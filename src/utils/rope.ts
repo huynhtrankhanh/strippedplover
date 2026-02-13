@@ -114,10 +114,7 @@ function size(node: Node | null): number {
 }
 
 function update(node: Node | null): Node | null {
-  if (!node) return null;
-  const newSize = size(node.left) + node.text.length + size(node.right);
-  if (newSize === node.size) return node;
-  return new Node(node.text, node.priority, node.left, node.right);
+  return node;
 }
 
 function merge(left: Node | null, right: Node | null): Node | null {
