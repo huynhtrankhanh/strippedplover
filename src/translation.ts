@@ -122,7 +122,11 @@ export class Translation {
     this.strokes = strokes;
     this.rtfcre = strokes.map(s => s.rtfcre);
     if (translation instanceof DerivedText) {
-      this._english = translation;
+      if (parent !== undefined && parent !== null) {
+        this._english = DerivedText.appendDerivation(parent, translation);
+      } else {
+        this._english = translation;
+      }
     } else {
       this._english = DerivedText.fromString(translation, parent ?? null);
     }

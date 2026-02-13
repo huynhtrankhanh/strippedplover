@@ -14,7 +14,8 @@ export class DerivedText {
 
   /**
    * Create a derivation node (or chain) from a string value.
-   * Returns null when the value is null or empty and no parent is provided.
+   * Empty strings are treated as no-op segments and simply return the parent
+   * (or null) to avoid inserting redundant nodes.
    */
   static fromString(value: string | null, parent: DerivedText | null = null): DerivedText | null {
     if (value === null) return parent;

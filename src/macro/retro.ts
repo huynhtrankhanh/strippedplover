@@ -75,7 +75,7 @@ export function deleteSpace(translator: Translator, stroke: Stroke, cmdline: str
     }
   }
 
-  // Only apply when we have both sides of the space (two translated parts).
+  // Only apply when we have at least two translated parts to remove the space between.
   if (chain !== null && parts > 1) {
     const newTranslation = new Translation([stroke], chain);
     newTranslation.replaced = replaced;
