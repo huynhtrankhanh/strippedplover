@@ -143,15 +143,6 @@ export class Translation {
     return this._english;
   }
 
-  /**
-   * Build a translation whose text derives from another translation by
-   * appending additional text without materializing the combined string.
-   */
-  static deriveFrom(parent: Translation | null, append: string | null): DerivedText | null {
-    const parentDerivation = parent ? parent.englishDerivation : null;
-    return DerivedText.fromString(append, parentDerivation ?? null);
-  }
-
   hasUndo(): boolean {
     // If there is no formatting, all translations can be undone
     if (this.formatting.length === 0) {

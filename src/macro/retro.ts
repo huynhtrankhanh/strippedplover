@@ -75,6 +75,7 @@ export function deleteSpace(translator: Translator, stroke: Stroke, cmdline: str
     }
   }
 
+  // Only apply when we have both sides of the space (two translated parts).
   if (chain !== null && parts > 1) {
     const newTranslation = new Translation([stroke], chain);
     newTranslation.replaced = replaced;
@@ -111,8 +112,10 @@ export function insertSpace(translator: Translator, stroke: Stroke, cmdline: str
   }
 
   // Try to insert a space by breaking attachment
-  let derivation: DerivedText | null = DerivedText.append(null, '{ }');
-  derivation = DerivedText.appendDerivation(derivation, replaced.englishDerivation);
+  const derivation = DerivedText.appendDerivation(
+    DerivedText.append(null, '{ }'),
+    replaced.englishDerivation
+  );
   const newTranslation = new Translation([stroke], derivation);
   newTranslation.replaced = [replaced];
   newTranslation.isRetrospectiveCommand = true;

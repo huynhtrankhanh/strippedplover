@@ -17,7 +17,7 @@ export class DerivedText {
    * Returns null when the value is null or empty and no parent is provided.
    */
   static fromString(value: string | null, parent: DerivedText | null = null): DerivedText | null {
-    if (value === null) return null;
+    if (value === null) return parent;
     if (value.length === 0) return parent;
     return new DerivedText(parent, value);
   }
@@ -25,8 +25,8 @@ export class DerivedText {
   /**
    * Append raw text to an existing derivation.
    */
-  static append(parent: DerivedText | null, value: string): DerivedText | null {
-    if (value.length === 0) return parent;
+  static append(parent: DerivedText | null, value: string | null): DerivedText | null {
+    if (value === null || value.length === 0) return parent;
     return new DerivedText(parent, value);
   }
 
