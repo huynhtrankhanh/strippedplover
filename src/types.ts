@@ -67,6 +67,7 @@ export interface Translation {
   strokes: Stroke[];
   rtfcre: string[];
   english: string | null;
+  englishDerivation: import('./derived-text.js').DerivedText | null;
   replaced: Translation[];
   formatting: Action[];
   isRetrospectiveCommand: boolean;

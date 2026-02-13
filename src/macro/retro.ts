@@ -6,6 +6,7 @@
 
 import { Translator, Translation } from '../translation.js';
 import { Stroke } from '../stroke.js';
+import { DerivedText } from '../derived-text.js';
 
 /**
  * Toggle the asterisk on the previous stroke
@@ -59,17 +60,23 @@ export function deleteSpace(translator: Translator, stroke: Stroke, cmdline: str
     return;
   }
 
-  const english: string[] = [];
+  let chain: DerivedText | null = null;
+  let parts = 0;
   for (const t of replaced) {
-    if (t.english !== null) {
-      english.push(t.english);
+    if (t.englishDerivation !== null) {
+      chain = DerivedText.appendDerivation(chain, t.englishDerivation);
+      parts++;
     } else if (t.rtfcre.length === 1 && /^\d+$/.test(t.rtfcre[0])) {
-      english.push(`{&${t.rtfcre[0]}}`);
+      chain = DerivedText.append(chain, `{&${t.rtfcre[0]}}`);
+      parts++;
+    }
+    if (chain !== null && t !== replaced[replaced.length - 1]) {
+      chain = DerivedText.append(chain, '{^~|^}');
     }
   }
 
-  if (english.length > 1) {
-    const newTranslation = new Translation([stroke], english.join('{^~|^}'));
+  if (chain !== null && parts > 1) {
+    const newTranslation = new Translation([stroke], chain);
     newTranslation.replaced = replaced;
     newTranslation.isRetrospectiveCommand = true;
     translator.translateTranslation(newTranslation);
@@ -104,8 +111,9 @@ export function insertSpace(translator: Translator, stroke: Stroke, cmdline: str
   }
 
   // Try to insert a space by breaking attachment
-  const newEnglish = `{ }${english}`;
-  const newTranslation = new Translation([stroke], newEnglish);
+  let derivation: DerivedText | null = DerivedText.append(null, '{ }');
+  derivation = DerivedText.appendDerivation(derivation, replaced.englishDerivation);
+  const newTranslation = new Translation([stroke], derivation);
   newTranslation.replaced = [replaced];
   newTranslation.isRetrospectiveCommand = true;
   translator.translateTranslation(newTranslation);

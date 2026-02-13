@@ -8,6 +8,7 @@ import { Stroke } from './stroke.js';
 import { StenoDictionaryCollection } from './dictionary/steno-dictionary.js';
 import * as system from './system/index.js';
 import { registry } from './registry.js';
+import { DerivedText } from './derived-text.js';
 
 // Escape/unescape for translations
 const ESCAPE_RX = /(\\[nrt]|[\n\r\t])/g;
@@ -112,15 +113,19 @@ function mappingToMacro(mapping: string | null, stroke: Stroke): Macro | null {
 export class Translation {
   strokes: Stroke[];
   rtfcre: string[];
-  english: string | null;
+  private _english: DerivedText | null;
   replaced: Translation[];
   formatting: any[]; // Will be filled by formatter
   isRetrospectiveCommand: boolean;
 
-  constructor(strokes: Stroke[], translation: string | null) {
+  constructor(strokes: Stroke[], translation: string | DerivedText | null, parent?: DerivedText | null) {
     this.strokes = strokes;
     this.rtfcre = strokes.map(s => s.rtfcre);
-    this.english = translation;
+    if (translation instanceof DerivedText) {
+      this._english = translation;
+    } else {
+      this._english = DerivedText.fromString(translation, parent ?? null);
+    }
     this.replaced = [];
     this.formatting = [];
     this.isRetrospectiveCommand = false;
@@ -128,6 +133,23 @@ export class Translation {
 
   get length(): number {
     return this.strokes.length;
+  }
+
+  get english(): string | null {
+    return this._english ? this._english.derive() : null;
+  }
+
+  get englishDerivation(): DerivedText | null {
+    return this._english;
+  }
+
+  /**
+   * Build a translation whose text derives from another translation by
+   * appending additional text without materializing the combined string.
+   */
+  static deriveFrom(parent: Translation | null, append: string | null): DerivedText | null {
+    const parentDerivation = parent ? parent.englishDerivation : null;
+    return DerivedText.fromString(append, parentDerivation ?? null);
   }
 
   hasUndo(): boolean {
@@ -148,9 +170,10 @@ export class Translation {
 
   toString(): string {
     let translation = 'None';
-    if (this.english !== null) {
+    const english = this.english;
+    if (english !== null) {
       // Escape backslashes first, then quotes for display
-      const escaped = escapeTranslation(this.english)
+      const escaped = escapeTranslation(english)
         .replace(/\\/g, '\\\\')
         .replace(/"/g, '\\"');
       translation = `"${escaped}"`;
