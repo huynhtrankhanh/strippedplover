@@ -6,7 +6,7 @@
 
 import { Translator, Translation } from '../translation.js';
 import { Stroke } from '../stroke.js';
-import { DerivedText } from '../derived-text.js';
+import { Rope } from '../rope.js';
 
 /**
  * Toggle the asterisk on the previous stroke
@@ -60,18 +60,18 @@ export function deleteSpace(translator: Translator, stroke: Stroke, cmdline: str
     return;
   }
 
-  let chain: DerivedText | null = null;
+  let chain: Rope | null = null;
   let parts = 0;
   for (const t of replaced) {
     if (t.englishDerivation !== null) {
-      chain = DerivedText.appendDerivation(chain, t.englishDerivation);
+      chain = Rope.appendRope(chain, t.englishDerivation);
       parts++;
     } else if (t.rtfcre.length === 1 && /^\d+$/.test(t.rtfcre[0])) {
-      chain = DerivedText.append(chain, `{&${t.rtfcre[0]}}`);
+      chain = Rope.append(chain, `{&${t.rtfcre[0]}}`);
       parts++;
     }
     if (chain !== null && t !== replaced[replaced.length - 1]) {
-      chain = DerivedText.append(chain, '{^~|^}');
+      chain = Rope.append(chain, '{^~|^}');
     }
   }
 
@@ -112,8 +112,8 @@ export function insertSpace(translator: Translator, stroke: Stroke, cmdline: str
   }
 
   // Try to insert a space by breaking attachment
-  const derivation = DerivedText.appendDerivation(
-    DerivedText.append(null, '{ }'),
+  const derivation = Rope.appendRope(
+    Rope.append(null, '{ }'),
     replaced.englishDerivation
   );
   const newTranslation = new Translation([stroke], derivation);

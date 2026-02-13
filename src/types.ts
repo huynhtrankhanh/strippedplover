@@ -67,7 +67,7 @@ export interface Translation {
   strokes: Stroke[];
   rtfcre: string[];
   english: string | null;
-  englishDerivation: import('./derived-text.js').DerivedText | null;
+  englishDerivation: import('./rope.js').Rope | null;
   replaced: Translation[];
   formatting: Action[];
   isRetrospectiveCommand: boolean;

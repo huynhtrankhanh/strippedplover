@@ -8,7 +8,7 @@ import { Stroke } from './stroke.js';
 import { StenoDictionaryCollection } from './dictionary/steno-dictionary.js';
 import * as system from './system/index.js';
 import { registry } from './registry.js';
-import { DerivedText } from './derived-text.js';
+import { Rope } from './rope.js';
 
 // Escape/unescape for translations
 const ESCAPE_RX = /(\\[nrt]|[\n\r\t])/g;
@@ -113,22 +113,22 @@ function mappingToMacro(mapping: string | null, stroke: Stroke): Macro | null {
 export class Translation {
   strokes: Stroke[];
   rtfcre: string[];
-  private _english: DerivedText | null;
+  private _english: Rope | null;
   replaced: Translation[];
   formatting: any[]; // Will be filled by formatter
   isRetrospectiveCommand: boolean;
 
-  constructor(strokes: Stroke[], translation: string | DerivedText | null, parent?: DerivedText | null) {
+  constructor(strokes: Stroke[], translation: string | Rope | null, parent?: Rope | null) {
     this.strokes = strokes;
     this.rtfcre = strokes.map(s => s.rtfcre);
-    if (translation instanceof DerivedText) {
+    if (translation instanceof Rope) {
       if (parent !== undefined && parent !== null) {
-        this._english = DerivedText.appendDerivation(parent, translation);
+        this._english = Rope.appendRope(parent, translation);
       } else {
         this._english = translation;
       }
     } else {
-      this._english = DerivedText.fromString(translation, parent ?? null);
+      this._english = Rope.fromString(translation, parent ?? null);
     }
     this.replaced = [];
     this.formatting = [];
@@ -140,10 +140,10 @@ export class Translation {
   }
 
   get english(): string | null {
-    return this._english ? this._english.derive() : null;
+    return this._english ? this._english.toString() : null;
   }
 
-  get englishDerivation(): DerivedText | null {
+  get englishDerivation(): Rope | null {
     return this._english;
   }
 
