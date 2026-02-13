@@ -349,6 +349,11 @@ export interface FormatterOutput {
   sendString: (text: string) => void;
   sendKeyCombination: (combo: string) => void;
   sendEngineCommand: (command: string) => void;
+  /**
+   * Optional: allow consumers to manage a persistent rope-based history.
+   */
+  trimHistory?: (count: number) => void;
+  recordCurrent?: () => void;
 }
 
 export type FormatterListener = (old: Action[], newActions: Action[]) => void;
@@ -401,6 +406,12 @@ export class Formatter {
     doTranslations: Translation[],
     prev: Translation[] | null
   ): void {
+    const undoCount = undo.length;
+    if (this._output?.trimHistory) {
+      // Remove undone snapshots before applying new actions
+      this._output.trimHistory(undoCount);
+    }
+
     let newActions: Action[] = [];
 
     if (doTranslations.length > 0) {
@@ -450,6 +461,10 @@ export class Formatter {
       }
 
       this.renderOutput(lastAct, actualOld, actualNew);
+    }
+
+    if (this._output?.recordCurrent) {
+      this._output.recordCurrent();
     }
 
     this.lastOutputSpacesAfter = this.spacesAfter;

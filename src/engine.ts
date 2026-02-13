@@ -13,6 +13,7 @@ import * as system from './system/index.js';
 import { registry } from './registry.js';
 import { registerMetas } from './meta/index.js';
 import { registerMacros } from './macro/index.js';
+import { Rope } from './utils/rope.js';
 
 // ============================================================================
 // Types
@@ -55,16 +56,18 @@ const ErrorCodes = {
 
 class TranslationOutputHandler {
   private engine: StrippedPlover;
-  private currentText = '';
+  private currentText: Rope = new Rope();
   private outputElements: OutputElement[] = [];
   private isInitial = true;
+  private history: Rope[] = [this.currentText];
 
   constructor(engine: StrippedPlover) {
     this.engine = engine;
   }
 
   resetAll(): void {
-    this.currentText = '';
+    this.currentText = new Rope();
+    this.history = [this.currentText];
     this.outputElements = [];
     this.isInitial = true;
   }
@@ -73,24 +76,43 @@ class TranslationOutputHandler {
     this.outputElements = [];
   }
 
+  trimHistory(count: number): void {
+    while (count > 0 && this.history.length > 1) {
+      this.history.pop();
+      count--;
+    }
+  }
+
+  recordCurrent(): void {
+    const last = this.history[this.history.length - 1];
+    if (last !== this.currentText) {
+      this.history.push(this.currentText);
+    }
+  }
+
   sendBackspaces(count: number): void {
-    if (count > 0) {
-      this.currentText = this.currentText.slice(0, -count);
+    if (count <= 0) return;
+    const len = this.currentText.length;
+    const remove = Math.min(len, count);
+    if (remove > 0) {
+      this.currentText = this.currentText.delete(len - remove, len);
     }
   }
 
   sendString(text: string): void {
-    this.currentText += text;
+    if (!text) return;
+    this.currentText = this.currentText.append(text);
   }
 
   sendKeyCombination(combo: string): void {
     // Commit any pending preedit before keypress
-    if (this.currentText) {
+    const pending = this.currentText.toString();
+    if (pending) {
       this.outputElements.push({
         type: 'committed',
-        text: this.currentText,
+        text: pending,
       });
-      this.currentText = '';
+      this.currentText = new Rope();
       this.isInitial = false;
     }
 
@@ -106,11 +128,12 @@ class TranslationOutputHandler {
 
   getOutputElements(): OutputElement[] {
     const elements = [...this.outputElements];
+    const currentText = this.currentText.toString();
 
-    if (this.currentText) {
+    if (currentText) {
       elements.push({
         type: 'preedit',
-        text: this.currentText,
+        text: currentText,
       });
     }
 
@@ -182,6 +205,8 @@ export class StrippedPlover {
       sendString: (text) => this.output.sendString(text),
       sendKeyCombination: (combo) => this.output.sendKeyCombination(combo),
       sendEngineCommand: (command) => this.output.sendEngineCommand(command),
+      trimHistory: (count) => this.output.trimHistory(count),
+      recordCurrent: () => this.output.recordCurrent(),
     });
     this.translator.addListener((undo, doTrans, prev) => {
       this.formatter.format(undo, doTrans, prev);
