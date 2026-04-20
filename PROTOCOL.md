@@ -580,6 +580,7 @@ Parameters:
 - `page` (integer, optional): 1-based page index (default: `1`)
 - `page_size` (integer, optional): Number of rows per page (default: `50`, max: `500`)
 - `sort` (string, optional): `short_first`, `long_first`, or `alphabetic` (default: `alphabetic`)
+- `match` (string, optional): `substring` (default) or `prefix`
 
 At least one of `stroke` or `output` is required.
 
@@ -590,6 +591,7 @@ At least one of `stroke` or `output` is required.
   "method": "search_entries",
   "params": {
     "output": "sun",
+    "match": "prefix",
     "sort": "short_first",
     "page": 1,
     "page_size": 10
@@ -611,7 +613,8 @@ At least one of `stroke` or `output` is required.
     "page_size": 10,
     "has_more": false,
     "sort": "short_first",
-    "output": "sun"
+    "output": "sun",
+    "match": "prefix"
   }
 }
 ```

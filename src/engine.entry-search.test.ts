@@ -77,6 +77,7 @@ describe('entry search and enumeration APIs', () => {
       { dictionary: '/dicts/main.json', stroke: 'ST', translation: 'sun' },
       { dictionary: '/dicts/main.json', stroke: 'TKPWRAOEUS', translation: 'sunrise' },
     ]);
+    expect(shortFirst.result?.match).toBe('substring');
 
     const longFirst = await engine.handleRequest({
       id: '5',
@@ -90,6 +91,44 @@ describe('entry search and enumeration APIs', () => {
     expect(longFirst.result?.entries).toEqual([
       { dictionary: '/dicts/main.json', stroke: 'TKPWRAOEUS', translation: 'sunrise' },
       { dictionary: '/dicts/main.json', stroke: 'ST', translation: 'sun' },
+    ]);
+  });
+
+  it('supports prefix match mode for search filters', async () => {
+    const { engine } = await createEngineWithEntries();
+
+    const substringResponse = await engine.handleRequest({
+      id: '5a',
+      method: 'search_entries',
+      params: {
+        output: 'rise',
+      },
+    });
+    expect(substringResponse.result?.entries).toEqual([
+      { dictionary: '/dicts/main.json', stroke: 'TKPWRAOEUS', translation: 'sunrise' },
+    ]);
+
+    const prefixResponse = await engine.handleRequest({
+      id: '5b',
+      method: 'search_entries',
+      params: {
+        output: 'rise',
+        match: 'prefix',
+      },
+    });
+    expect(prefixResponse.result?.entries).toEqual([]);
+    expect(prefixResponse.result?.match).toBe('prefix');
+
+    const strokePrefixResponse = await engine.handleRequest({
+      id: '5c',
+      method: 'search_entries',
+      params: {
+        stroke: 'TKP',
+        match: 'prefix',
+      },
+    });
+    expect(strokePrefixResponse.result?.entries).toEqual([
+      { dictionary: '/dicts/main.json', stroke: 'TKPWRAOEUS', translation: 'sunrise' },
     ]);
   });
 

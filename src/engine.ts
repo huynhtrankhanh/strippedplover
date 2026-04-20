@@ -993,6 +993,17 @@ export class StrippedPlover {
     return trimmed.length === 0 ? null : trimmed;
   }
 
+  private parseSearchMatchMode(value: unknown): 'substring' | 'prefix' {
+    if (value === undefined) {
+      return 'substring';
+    }
+    const normalized = String(value);
+    if (normalized === 'substring' || normalized === 'prefix') {
+      return normalized;
+    }
+    throw new Error('match must be one of: substring, prefix');
+  }
+
   private resolveOptionalDictionaryIdentifier(value: unknown): string | null {
     const identifier = this.parseOptionalString(value);
     if (!identifier) {
@@ -1079,6 +1090,7 @@ export class StrippedPlover {
     const dictionary = this.resolveOptionalDictionaryIdentifier(params.dictionary);
     const { page, pageSize, offset } = this.parsePagination(params);
     const sort = this.parseSortOrder(params.sort);
+    const match = this.parseSearchMatchMode(params.match);
 
     if (!strokeQuery && !outputQuery) {
       throw new Error('At least one of stroke or output is required');
@@ -1087,9 +1099,17 @@ export class StrippedPlover {
     const normalizedStroke = strokeQuery?.toLowerCase() ?? null;
     const normalizedOutput = outputQuery?.toLowerCase() ?? null;
     const filtered = this.listAllEntries().filter(entry => {
+      const stroke = entry.stroke.toLowerCase();
+      const output = entry.translation.toLowerCase();
       if (dictionary && entry.dictionary !== dictionary) return false;
-      if (normalizedStroke && !entry.stroke.toLowerCase().includes(normalizedStroke)) return false;
-      if (normalizedOutput && !entry.translation.toLowerCase().includes(normalizedOutput)) return false;
+      if (normalizedStroke) {
+        const strokeMatch = match === 'prefix' ? stroke.startsWith(normalizedStroke) : stroke.includes(normalizedStroke);
+        if (!strokeMatch) return false;
+      }
+      if (normalizedOutput) {
+        const outputMatch = match === 'prefix' ? output.startsWith(normalizedOutput) : output.includes(normalizedOutput);
+        if (!outputMatch) return false;
+      }
       return true;
     });
     const sorted = this.sortEntries(filtered, sort);
@@ -1110,6 +1130,7 @@ export class StrippedPlover {
     if (outputQuery) {
       result.output = outputQuery;
     }
+    result.match = match;
     if (dictionary) {
       result.dictionary = dictionary;
     }
