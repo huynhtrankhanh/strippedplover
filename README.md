@@ -16,6 +16,7 @@ Stripped Plover is a streamlined version of [Plover](https://github.com/opensten
 - **Stateful translation**: Supports multi-stroke translations and undo
 - **Dictionary stack control**: RPCs and `{PLOVER:...}` commands (PRIORITY/TOGGLE/SOLO/END_SOLO) matching the `plover_dict_commands` syntax
 - **Dictionary state events**: Emits STDOUT events when translations change dictionary state, keeping hosts in sync
+- **Entry search and enumeration APIs**: Paginated dictionary entry listing and filtering with configurable sorting
 - **Sandboxed Python dictionaries**: Execute Python dictionary code in a WASM sandbox (read-only at runtime)
 
 ## Dictionary Types
@@ -68,6 +69,8 @@ See [PROTOCOL.md](PROTOCOL.md) for complete protocol documentation.
 | `toggle_dictionaries` | Apply multiple enable/disable toggles using `+`, `-`, `!` prefixes |
 | `solo_dictionaries` / `end_solo_dictionaries` | Enter/exit temporary solo mode for dictionaries |
 | `get_dictionary_state` | Return full dictionary stack state (order, enabled, readonly, entries, solo flag) |
+| `enumerate_entries` | List entries with pagination and sorting |
+| `search_entries` | Search entries by stroke and/or output with pagination and sorting |
 | `lookup` | Look up a stroke |
 | `reverse_lookup` | Find strokes for a translation |
 | `quit` | Stop the engine |

@@ -259,7 +259,7 @@ Dictionary name matching is suffix-based for prioritization and enable/disable o
 When dictionary state changes because of translation-driven `{PLOVER:...}` commands (e.g., `PRIORITY_DICT`, `TOGGLE_DICT`, `SOLO_DICT`, `END_SOLO_DICT`), Stripped Plover emits an asynchronous event to STDOUT:
 
 ```json
-{"event":"dictionary_state","solo":false,"dictionaries":[{"path":"/configs/main.json","enabled":true,"readonly":false,"entries":123}]}
+{"event":"dictionary_state","solo":false,"dictionaries":[{"identifier":"/configs/main.json","enabled":true,"readonly":false,"entries":123}]}
 ```
 
 These events are only sent for translation-triggered changes and may arrive in between request/response lines.
@@ -300,7 +300,7 @@ Move one or more dictionaries to the top of the stack (first path ends up highes
   "id": "6b",
   "method": "prioritize_dictionaries",
   "params": {
-    "paths": ["user.json", "commands.json"]
+    "identifiers": ["user.json", "commands.json"]
   }
 }
 ```
@@ -312,9 +312,9 @@ Move one or more dictionaries to the top of the stack (first path ends up highes
   "result": {
     "status": "ok",
     "dictionaries": [
-      {"path": "/configs/user.json", "enabled": true, "readonly": false, "entries": 0},
-      {"path": "/configs/commands.json", "enabled": true, "readonly": false, "entries": 0},
-      {"path": "/configs/main.json", "enabled": true, "readonly": false, "entries": 0}
+      {"identifier": "/configs/user.json", "enabled": true, "readonly": false, "entries": 0},
+      {"identifier": "/configs/commands.json", "enabled": true, "readonly": false, "entries": 0},
+      {"identifier": "/configs/main.json", "enabled": true, "readonly": false, "entries": 0}
     ]
   }
 }
@@ -330,7 +330,7 @@ Enable or disable a specific dictionary.
   "id": "6c",
   "method": "set_dictionary_enabled",
   "params": {
-    "path": "user.json",
+    "identifier": "user.json",
     "enabled": false
   }
 }
@@ -342,7 +342,7 @@ Enable or disable a specific dictionary.
   "id": "6c",
   "result": {
     "status": "ok",
-    "path": "user.json",
+    "identifier": "user.json",
     "enabled": false
   }
 }
@@ -373,8 +373,8 @@ Apply multiple enable/disable toggles at once using the same syntax as the Plove
   "result": {
     "status": "ok",
     "dictionaries": [
-      {"path": "commands.json", "enabled": false, "readonly": false, "entries": 0},
-      {"path": "main.json", "enabled": false, "readonly": false, "entries": 0}
+      {"identifier": "commands.json", "enabled": false, "readonly": false, "entries": 0},
+      {"identifier": "main.json", "enabled": false, "readonly": false, "entries": 0}
     ]
   }
 }
@@ -403,8 +403,8 @@ Temporarily enter a "solo" dictionary mode. All dictionaries are disabled first,
     "status": "ok",
     "solo": true,
     "dictionaries": [
-      {"path": "commands.json", "enabled": true, "readonly": false, "entries": 0},
-      {"path": "main.json", "enabled": false, "readonly": false, "entries": 0}
+      {"identifier": "commands.json", "enabled": true, "readonly": false, "entries": 0},
+      {"identifier": "main.json", "enabled": false, "readonly": false, "entries": 0}
     ]
   }
 }
@@ -431,8 +431,8 @@ Restore the enabled/disabled state that was active before the first `solo_dictio
     "status": "ok",
     "solo": false,
     "dictionaries": [
-      {"path": "commands.json", "enabled": true, "readonly": false, "entries": 0},
-      {"path": "main.json", "enabled": true, "readonly": false, "entries": 0}
+      {"identifier": "commands.json", "enabled": true, "readonly": false, "entries": 0},
+      {"identifier": "main.json", "enabled": true, "readonly": false, "entries": 0}
     ]
   }
 }
@@ -458,7 +458,7 @@ List all loaded dictionaries.
   "result": {
     "dictionaries": [
       {
-        "path": "/path/to/dictionary.json",
+        "identifier": "/path/to/dictionary.json",
         "enabled": true,
         "readonly": false,
         "entries": 12345
@@ -489,7 +489,7 @@ Return the full dictionary stack along with whether solo mode is active.
     "solo": false,
     "dictionaries": [
       {
-        "path": "/path/to/dictionary.json",
+        "identifier": "/path/to/dictionary.json",
         "enabled": true,
         "readonly": false,
         "entries": 12345
@@ -524,6 +524,97 @@ Get all entries from a specific JSON dictionary. Not available for Python dictio
       {"stroke": "TEFT", "translation": "test"},
       {"stroke": "HEL/HROE", "translation": "hello"}
     ]
+  }
+}
+```
+
+#### `enumerate_entries`
+
+Enumerate dictionary entries with pagination and sorting. This works across all JSON dictionaries, or a single dictionary if filtered.
+
+Parameters:
+- `dictionary` (string, optional): Dictionary identifier filter (supports suffix matching like `main.json`)
+- `page` (integer, optional): 1-based page index (default: `1`)
+- `page_size` (integer, optional): Number of rows per page (default: `50`, max: `500`)
+- `sort` (string, optional): `short_first`, `long_first`, or `alphabetic` (default: `alphabetic`)
+
+**Request:**
+```json
+{
+  "id": "8a",
+  "method": "enumerate_entries",
+  "params": {
+    "page": 1,
+    "page_size": 2,
+    "sort": "alphabetic"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "id": "8a",
+  "result": {
+    "entries": [
+      {"dictionary": "main.json", "stroke": "A", "translation": "apple"},
+      {"dictionary": "main.json", "stroke": "PWETA", "translation": "beta"}
+    ],
+    "total": 120,
+    "page": 1,
+    "page_size": 2,
+    "has_more": true,
+    "sort": "alphabetic"
+  }
+}
+```
+
+#### `search_entries`
+
+Search dictionary entries by stroke and/or output text with pagination and sorting.
+
+Parameters:
+- `stroke` (string, optional): Case-insensitive substring match against stroke text
+- `output` (string, optional): Case-insensitive substring match against translation text
+- `dictionary` (string, optional): Dictionary identifier filter (supports suffix matching)
+- `page` (integer, optional): 1-based page index (default: `1`)
+- `page_size` (integer, optional): Number of rows per page (default: `50`, max: `500`)
+- `sort` (string, optional): `short_first`, `long_first`, or `alphabetic` (default: `alphabetic`)
+- `match` (string, optional): `substring` (default) or `prefix`
+
+At least one of `stroke` or `output` is required.
+
+**Request:**
+```json
+{
+  "id": "8b",
+  "method": "search_entries",
+  "params": {
+    "output": "sun",
+    "match": "prefix",
+    "sort": "short_first",
+    "page": 1,
+    "page_size": 10
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "id": "8b",
+  "result": {
+    "entries": [
+      {"dictionary": "main.json", "stroke": "ST", "translation": "sun"},
+      {"dictionary": "main.json", "stroke": "LONG/ER", "translation": "sunrise"}
+    ],
+    "total": 2,
+    "page": 1,
+    "page_size": 10,
+    "has_more": false,
+    "sort": "short_first",
+    "output": "sun",
+    "match": "prefix"
   }
 }
 ```

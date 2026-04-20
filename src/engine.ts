@@ -620,6 +620,12 @@ export class StrippedPlover {
         case 'get_dictionary_entries':
           result = this.getDictionaryEntries(params);
           break;
+        case 'enumerate_entries':
+          result = this.enumerateEntries(params);
+          break;
+        case 'search_entries':
+          result = this.searchEntries(params);
+          break;
         case 'export_dictionary':
           result = this.exportDictionary(params);
           break;
@@ -943,6 +949,192 @@ export class StrippedPlover {
     }));
 
     return { name, entries };
+  }
+
+  private parsePagination(params: Record<string, unknown>): { page: number; pageSize: number; offset: number } {
+    const rawPage = params.page;
+    const rawPageSize = params.page_size;
+    const page = rawPage === undefined ? 1 : Number(rawPage);
+    const pageSize = rawPageSize === undefined ? 50 : Number(rawPageSize);
+
+    if (!Number.isInteger(page) || page < 1) {
+      throw new Error('page must be a positive integer');
+    }
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 500) {
+      throw new Error('page_size must be an integer between 1 and 500');
+    }
+
+    return {
+      page,
+      pageSize,
+      offset: (page - 1) * pageSize,
+    };
+  }
+
+  private parseSortOrder(sort: unknown): string {
+    const value = sort === undefined ? 'alphabetic' : String(sort);
+    switch (value) {
+      case 'short_first':
+        return 'short_first';
+      case 'long_first':
+        return 'long_first';
+      case 'alphabetic':
+        return 'alphabetic';
+      default:
+        throw new Error('sort must be one of: short_first, long_first, alphabetic');
+    }
+  }
+
+  private parseOptionalString(value: unknown): string | null {
+    if (typeof value !== 'string') {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length === 0 ? null : trimmed;
+  }
+
+  private parseSearchMatchMode(value: unknown): 'substring' | 'prefix' {
+    if (value === undefined) {
+      return 'substring';
+    }
+    const normalized = String(value);
+    if (normalized === 'substring' || normalized === 'prefix') {
+      return normalized;
+    }
+    throw new Error('match must be one of: substring, prefix');
+  }
+
+  private resolveOptionalDictionaryIdentifier(value: unknown): string | null {
+    const identifier = this.parseOptionalString(value);
+    if (!identifier) {
+      return null;
+    }
+    const idx = this.findDictionaryIndex(identifier);
+    return this.dictionaries.dicts[idx].identifier;
+  }
+
+  private listAllEntries(): Array<{ dictionary: string; stroke: string; translation: string }> {
+    const entries: Array<{ dictionary: string; stroke: string; translation: string }> = [];
+    for (const dictionary of this.dictionaries.dicts) {
+      for (const [strokeTuple, translation] of dictionary.items()) {
+        entries.push({
+          dictionary: dictionary.identifier,
+          stroke: strokeTuple.join('/'),
+          translation,
+        });
+      }
+    }
+    return entries;
+  }
+
+  private entryLength(stroke: string): number {
+    return stroke.replace(/\//g, '').length;
+  }
+
+  private sortEntries(
+    entries: Array<{ dictionary: string; stroke: string; translation: string }>,
+    sort: string
+  ): Array<{ dictionary: string; stroke: string; translation: string }> {
+    const sorted = [...entries];
+    if (sort === 'short_first') {
+      sorted.sort((a, b) =>
+        this.entryLength(a.stroke) - this.entryLength(b.stroke) ||
+        a.stroke.localeCompare(b.stroke) ||
+        a.translation.localeCompare(b.translation, undefined, { sensitivity: 'base' })
+      );
+      return sorted;
+    }
+    if (sort === 'long_first') {
+      sorted.sort((a, b) =>
+        this.entryLength(b.stroke) - this.entryLength(a.stroke) ||
+        a.stroke.localeCompare(b.stroke) ||
+        a.translation.localeCompare(b.translation, undefined, { sensitivity: 'base' })
+      );
+      return sorted;
+    }
+
+    sorted.sort((a, b) =>
+      a.translation.localeCompare(b.translation, undefined, { sensitivity: 'base' }) ||
+      a.stroke.localeCompare(b.stroke) ||
+      a.dictionary.localeCompare(b.dictionary)
+    );
+    return sorted;
+  }
+
+  private enumerateEntries(params: Record<string, unknown>): Record<string, unknown> {
+    const dictionary = this.resolveOptionalDictionaryIdentifier(params.dictionary);
+    const { page, pageSize, offset } = this.parsePagination(params);
+    const sort = this.parseSortOrder(params.sort);
+    const filtered = this.listAllEntries().filter(entry => !dictionary || entry.dictionary === dictionary);
+    const sorted = this.sortEntries(filtered, sort);
+    const rows = sorted.slice(offset, offset + pageSize);
+    const total = sorted.length;
+
+    const result: Record<string, unknown> = {
+      entries: rows,
+      total,
+      page,
+      page_size: pageSize,
+      has_more: offset + rows.length < total,
+      sort,
+    };
+    if (dictionary) {
+      result.dictionary = dictionary;
+    }
+    return result;
+  }
+
+  private searchEntries(params: Record<string, unknown>): Record<string, unknown> {
+    const strokeQuery = this.parseOptionalString(params.stroke);
+    const outputQuery = this.parseOptionalString(params.output);
+    const dictionary = this.resolveOptionalDictionaryIdentifier(params.dictionary);
+    const { page, pageSize, offset } = this.parsePagination(params);
+    const sort = this.parseSortOrder(params.sort);
+    const match = this.parseSearchMatchMode(params.match);
+
+    if (!strokeQuery && !outputQuery) {
+      throw new Error('At least one of stroke or output is required');
+    }
+
+    const normalizedStroke = strokeQuery?.toLowerCase() ?? null;
+    const normalizedOutput = outputQuery?.toLowerCase() ?? null;
+    const filtered = this.listAllEntries().filter(entry => {
+      const stroke = entry.stroke.toLowerCase();
+      const output = entry.translation.toLowerCase();
+      if (dictionary && entry.dictionary !== dictionary) return false;
+      if (normalizedStroke) {
+        const strokeMatch = match === 'prefix' ? stroke.startsWith(normalizedStroke) : stroke.includes(normalizedStroke);
+        if (!strokeMatch) return false;
+      }
+      if (normalizedOutput) {
+        const outputMatch = match === 'prefix' ? output.startsWith(normalizedOutput) : output.includes(normalizedOutput);
+        if (!outputMatch) return false;
+      }
+      return true;
+    });
+    const sorted = this.sortEntries(filtered, sort);
+    const rows = sorted.slice(offset, offset + pageSize);
+    const total = sorted.length;
+
+    const result: Record<string, unknown> = {
+      entries: rows,
+      total,
+      page,
+      page_size: pageSize,
+      has_more: offset + rows.length < total,
+      sort,
+    };
+    if (strokeQuery) {
+      result.stroke = strokeQuery;
+    }
+    if (outputQuery) {
+      result.output = outputQuery;
+    }
+    result.match = match;
+    if (dictionary) {
+      result.dictionary = dictionary;
+    }
+    return result;
   }
 
   /**
