@@ -533,7 +533,7 @@ Get all entries from a specific JSON dictionary. Not available for Python dictio
 Enumerate dictionary entries with pagination and sorting. This works across all JSON dictionaries, or a single dictionary if filtered.
 
 Parameters:
-- `dictionary` / `name` / `identifier` (string, optional): Dictionary identifier filter (supports suffix matching like `main.json`)
+- `dictionary` (string, optional): Dictionary identifier filter (supports suffix matching like `main.json`)
 - `page` (integer, optional): 1-based page index (default: `1`)
 - `page_size` (integer, optional): Number of rows per page (default: `50`, max: `500`)
 - `sort` (string, optional): `short_first`, `long_first`, or `alphabetic` (default: `alphabetic`)
@@ -564,8 +564,7 @@ Parameters:
     "page": 1,
     "page_size": 2,
     "has_more": true,
-    "sort": "alphabetic",
-    "dictionary": null
+    "sort": "alphabetic"
   }
 }
 ```
@@ -576,13 +575,13 @@ Search dictionary entries by stroke and/or output text with pagination and sorti
 
 Parameters:
 - `stroke` (string, optional): Case-insensitive substring match against stroke text
-- `output` / `translation` (string, optional): Case-insensitive substring match against translation text
-- `dictionary` / `name` / `identifier` (string, optional): Dictionary identifier filter (supports suffix matching)
+- `output` (string, optional): Case-insensitive substring match against translation text
+- `dictionary` (string, optional): Dictionary identifier filter (supports suffix matching)
 - `page` (integer, optional): 1-based page index (default: `1`)
 - `page_size` (integer, optional): Number of rows per page (default: `50`, max: `500`)
 - `sort` (string, optional): `short_first`, `long_first`, or `alphabetic` (default: `alphabetic`)
 
-At least one of `stroke` or `output`/`translation` is required.
+At least one of `stroke` or `output` is required.
 
 **Request:**
 ```json
@@ -612,9 +611,7 @@ At least one of `stroke` or `output`/`translation` is required.
     "page_size": 10,
     "has_more": false,
     "sort": "short_first",
-    "stroke": null,
-    "output": "sun",
-    "dictionary": null
+    "output": "sun"
   }
 }
 ```

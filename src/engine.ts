@@ -953,7 +953,7 @@ export class StrippedPlover {
 
   private parsePagination(params: Record<string, unknown>): { page: number; pageSize: number; offset: number } {
     const rawPage = params.page;
-    const rawPageSize = params.page_size ?? params.pageSize;
+    const rawPageSize = params.page_size;
     const page = rawPage === undefined ? 1 : Number(rawPage);
     const pageSize = rawPageSize === undefined ? 50 : Number(rawPageSize);
 
@@ -1051,7 +1051,7 @@ export class StrippedPlover {
   }
 
   private enumerateEntries(params: Record<string, unknown>): Record<string, unknown> {
-    const dictionary = this.resolveOptionalDictionaryIdentifier(params.dictionary ?? params.name ?? params.identifier);
+    const dictionary = this.resolveOptionalDictionaryIdentifier(params.dictionary);
     const { page, pageSize, offset } = this.parsePagination(params);
     const sort = this.parseSortOrder(params.sort);
     const filtered = this.listAllEntries().filter(entry => !dictionary || entry.dictionary === dictionary);
@@ -1059,21 +1059,24 @@ export class StrippedPlover {
     const rows = sorted.slice(offset, offset + pageSize);
     const total = sorted.length;
 
-    return {
+    const result: Record<string, unknown> = {
       entries: rows,
       total,
       page,
       page_size: pageSize,
       has_more: offset + rows.length < total,
       sort,
-      dictionary,
     };
+    if (dictionary) {
+      result.dictionary = dictionary;
+    }
+    return result;
   }
 
   private searchEntries(params: Record<string, unknown>): Record<string, unknown> {
     const strokeQuery = this.parseOptionalString(params.stroke);
-    const outputQuery = this.parseOptionalString(params.output ?? params.translation);
-    const dictionary = this.resolveOptionalDictionaryIdentifier(params.dictionary ?? params.name ?? params.identifier);
+    const outputQuery = this.parseOptionalString(params.output);
+    const dictionary = this.resolveOptionalDictionaryIdentifier(params.dictionary);
     const { page, pageSize, offset } = this.parsePagination(params);
     const sort = this.parseSortOrder(params.sort);
 
@@ -1093,17 +1096,24 @@ export class StrippedPlover {
     const rows = sorted.slice(offset, offset + pageSize);
     const total = sorted.length;
 
-    return {
+    const result: Record<string, unknown> = {
       entries: rows,
       total,
       page,
       page_size: pageSize,
       has_more: offset + rows.length < total,
       sort,
-      stroke: strokeQuery,
-      output: outputQuery,
-      dictionary,
     };
+    if (strokeQuery) {
+      result.stroke = strokeQuery;
+    }
+    if (outputQuery) {
+      result.output = outputQuery;
+    }
+    if (dictionary) {
+      result.dictionary = dictionary;
+    }
+    return result;
   }
 
   /**
