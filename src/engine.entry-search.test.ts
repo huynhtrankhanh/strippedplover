@@ -15,9 +15,9 @@ describe('entry search and enumeration APIs', () => {
         type: 'json',
         data: {
           ST: 'sun',
-          'LONG/ER': 'sunrise',
+          TKPWRAOEUS: 'sunrise',
           A: 'apple',
-          B: 'beta',
+          PWETA: 'beta',
         },
       },
     });
@@ -29,8 +29,8 @@ describe('entry search and enumeration APIs', () => {
         name: altName,
         type: 'json',
         data: {
-          Z: 'zebra',
-          CAT: 'cat',
+          STPWRA: 'zebra',
+          KAT: 'cat',
         },
       },
     });
@@ -56,8 +56,8 @@ describe('entry search and enumeration APIs', () => {
     expect(response.result?.page_size).toBe(2);
     expect(response.result?.has_more).toBe(true);
     expect(response.result?.entries).toEqual([
-      { dictionary: '/dicts/main.json', stroke: 'B', translation: 'beta' },
-      { dictionary: '/dicts/alt.json', stroke: 'CAT', translation: 'cat' },
+      { dictionary: '/dicts/alt.json', stroke: 'KAT', translation: 'cat' },
+      { dictionary: '/dicts/main.json', stroke: 'ST', translation: 'sun' },
     ]);
   });
 
@@ -75,7 +75,7 @@ describe('entry search and enumeration APIs', () => {
 
     expect(shortFirst.result?.entries).toEqual([
       { dictionary: '/dicts/main.json', stroke: 'ST', translation: 'sun' },
-      { dictionary: '/dicts/main.json', stroke: 'LONG/ER', translation: 'sunrise' },
+      { dictionary: '/dicts/main.json', stroke: 'TKPWRAOEUS', translation: 'sunrise' },
     ]);
 
     const longFirst = await engine.handleRequest({
@@ -88,7 +88,7 @@ describe('entry search and enumeration APIs', () => {
     });
 
     expect(longFirst.result?.entries).toEqual([
-      { dictionary: '/dicts/main.json', stroke: 'LONG/ER', translation: 'sunrise' },
+      { dictionary: '/dicts/main.json', stroke: 'TKPWRAOEUS', translation: 'sunrise' },
       { dictionary: '/dicts/main.json', stroke: 'ST', translation: 'sun' },
     ]);
   });

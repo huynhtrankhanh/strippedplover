@@ -975,11 +975,11 @@ export class StrippedPlover {
     const value = sort === undefined ? 'alphabetic' : String(sort);
     switch (value) {
       case 'short_first':
-        return "LENGTH(REPLACE(stroke, '/', '')) ASC, stroke ASC, translation COLLATE NOCASE ASC";
+        return 'short_first';
       case 'long_first':
-        return "LENGTH(REPLACE(stroke, '/', '')) DESC, stroke ASC, translation COLLATE NOCASE ASC";
+        return 'long_first';
       case 'alphabetic':
-        return 'translation COLLATE NOCASE ASC, stroke ASC';
+        return 'alphabetic';
       default:
         throw new Error('sort must be one of: short_first, long_first, alphabetic');
     }
@@ -1002,35 +1002,62 @@ export class StrippedPlover {
     return this.dictionaries.dicts[idx].identifier;
   }
 
+  private listAllEntries(): Array<{ dictionary: string; stroke: string; translation: string }> {
+    const entries: Array<{ dictionary: string; stroke: string; translation: string }> = [];
+    for (const dictionary of this.dictionaries.dicts) {
+      for (const [strokeTuple, translation] of dictionary.items()) {
+        entries.push({
+          dictionary: dictionary.identifier,
+          stroke: strokeTuple.join('/'),
+          translation,
+        });
+      }
+    }
+    return entries;
+  }
+
+  private entryLength(stroke: string): number {
+    return stroke.replace(/\//g, '').length;
+  }
+
+  private sortEntries(
+    entries: Array<{ dictionary: string; stroke: string; translation: string }>,
+    sort: string
+  ): Array<{ dictionary: string; stroke: string; translation: string }> {
+    const sorted = [...entries];
+    if (sort === 'short_first') {
+      sorted.sort((a, b) =>
+        this.entryLength(a.stroke) - this.entryLength(b.stroke) ||
+        a.stroke.localeCompare(b.stroke) ||
+        a.translation.localeCompare(b.translation, undefined, { sensitivity: 'base' })
+      );
+      return sorted;
+    }
+    if (sort === 'long_first') {
+      sorted.sort((a, b) =>
+        this.entryLength(b.stroke) - this.entryLength(a.stroke) ||
+        a.stroke.localeCompare(b.stroke) ||
+        a.translation.localeCompare(b.translation, undefined, { sensitivity: 'base' })
+      );
+      return sorted;
+    }
+
+    sorted.sort((a, b) =>
+      a.translation.localeCompare(b.translation, undefined, { sensitivity: 'base' }) ||
+      a.stroke.localeCompare(b.stroke) ||
+      a.dictionary.localeCompare(b.dictionary)
+    );
+    return sorted;
+  }
+
   private enumerateEntries(params: Record<string, unknown>): Record<string, unknown> {
     const dictionary = this.resolveOptionalDictionaryIdentifier(params.dictionary ?? params.name ?? params.identifier);
     const { page, pageSize, offset } = this.parsePagination(params);
-    const orderBy = this.parseSortOrder(params.sort);
-
-    const whereParts: string[] = [];
-    const whereValues: unknown[] = [];
-    if (dictionary) {
-      whereParts.push('dictionary = ?');
-      whereValues.push(dictionary);
-    }
-    const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
-
-    const countStmt = this.db.prepare(`SELECT COUNT(*) AS count FROM entries ${whereClause}`);
-    const countRow = countStmt.get(...whereValues) as { count: number };
-    const total = countRow.count;
-
-    const entriesStmt = this.db.prepare(`
-      SELECT dictionary, stroke, translation
-      FROM entries
-      ${whereClause}
-      ORDER BY ${orderBy}
-      LIMIT ? OFFSET ?
-    `);
-    const rows = entriesStmt.all(...whereValues, pageSize, offset) as Array<{
-      dictionary: string;
-      stroke: string;
-      translation: string;
-    }>;
+    const sort = this.parseSortOrder(params.sort);
+    const filtered = this.listAllEntries().filter(entry => !dictionary || entry.dictionary === dictionary);
+    const sorted = this.sortEntries(filtered, sort);
+    const rows = sorted.slice(offset, offset + pageSize);
+    const total = sorted.length;
 
     return {
       entries: rows,
@@ -1038,7 +1065,7 @@ export class StrippedPlover {
       page,
       page_size: pageSize,
       has_more: offset + rows.length < total,
-      sort: params.sort === undefined ? 'alphabetic' : String(params.sort),
+      sort,
       dictionary,
     };
   }
@@ -1048,45 +1075,23 @@ export class StrippedPlover {
     const outputQuery = this.parseOptionalString(params.output ?? params.translation);
     const dictionary = this.resolveOptionalDictionaryIdentifier(params.dictionary ?? params.name ?? params.identifier);
     const { page, pageSize, offset } = this.parsePagination(params);
-    const orderBy = this.parseSortOrder(params.sort);
+    const sort = this.parseSortOrder(params.sort);
 
     if (!strokeQuery && !outputQuery) {
       throw new Error('At least one of stroke or output is required');
     }
 
-    const whereParts: string[] = [];
-    const whereValues: unknown[] = [];
-
-    if (dictionary) {
-      whereParts.push('dictionary = ?');
-      whereValues.push(dictionary);
-    }
-    if (strokeQuery) {
-      whereParts.push('LOWER(stroke) LIKE LOWER(?)');
-      whereValues.push(`%${strokeQuery}%`);
-    }
-    if (outputQuery) {
-      whereParts.push('LOWER(translation) LIKE LOWER(?)');
-      whereValues.push(`%${outputQuery}%`);
-    }
-
-    const whereClause = `WHERE ${whereParts.join(' AND ')}`;
-    const countStmt = this.db.prepare(`SELECT COUNT(*) AS count FROM entries ${whereClause}`);
-    const countRow = countStmt.get(...whereValues) as { count: number };
-    const total = countRow.count;
-
-    const entriesStmt = this.db.prepare(`
-      SELECT dictionary, stroke, translation
-      FROM entries
-      ${whereClause}
-      ORDER BY ${orderBy}
-      LIMIT ? OFFSET ?
-    `);
-    const rows = entriesStmt.all(...whereValues, pageSize, offset) as Array<{
-      dictionary: string;
-      stroke: string;
-      translation: string;
-    }>;
+    const normalizedStroke = strokeQuery?.toLowerCase() ?? null;
+    const normalizedOutput = outputQuery?.toLowerCase() ?? null;
+    const filtered = this.listAllEntries().filter(entry => {
+      if (dictionary && entry.dictionary !== dictionary) return false;
+      if (normalizedStroke && !entry.stroke.toLowerCase().includes(normalizedStroke)) return false;
+      if (normalizedOutput && !entry.translation.toLowerCase().includes(normalizedOutput)) return false;
+      return true;
+    });
+    const sorted = this.sortEntries(filtered, sort);
+    const rows = sorted.slice(offset, offset + pageSize);
+    const total = sorted.length;
 
     return {
       entries: rows,
@@ -1094,7 +1099,7 @@ export class StrippedPlover {
       page,
       page_size: pageSize,
       has_more: offset + rows.length < total,
-      sort: params.sort === undefined ? 'alphabetic' : String(params.sort),
+      sort,
       stroke: strokeQuery,
       output: outputQuery,
       dictionary,
