@@ -620,6 +620,12 @@ export class StrippedPlover {
         case 'get_dictionary_entries':
           result = this.getDictionaryEntries(params);
           break;
+        case 'enumerate_entries':
+          result = this.enumerateEntries(params);
+          break;
+        case 'search_entries':
+          result = this.searchEntries(params);
+          break;
         case 'export_dictionary':
           result = this.exportDictionary(params);
           break;
@@ -943,6 +949,156 @@ export class StrippedPlover {
     }));
 
     return { name, entries };
+  }
+
+  private parsePagination(params: Record<string, unknown>): { page: number; pageSize: number; offset: number } {
+    const rawPage = params.page;
+    const rawPageSize = params.page_size ?? params.pageSize;
+    const page = rawPage === undefined ? 1 : Number(rawPage);
+    const pageSize = rawPageSize === undefined ? 50 : Number(rawPageSize);
+
+    if (!Number.isInteger(page) || page < 1) {
+      throw new Error('page must be a positive integer');
+    }
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 500) {
+      throw new Error('page_size must be an integer between 1 and 500');
+    }
+
+    return {
+      page,
+      pageSize,
+      offset: (page - 1) * pageSize,
+    };
+  }
+
+  private parseSortOrder(sort: unknown): string {
+    const value = sort === undefined ? 'alphabetic' : String(sort);
+    switch (value) {
+      case 'short_first':
+        return "LENGTH(REPLACE(stroke, '/', '')) ASC, stroke ASC, translation COLLATE NOCASE ASC";
+      case 'long_first':
+        return "LENGTH(REPLACE(stroke, '/', '')) DESC, stroke ASC, translation COLLATE NOCASE ASC";
+      case 'alphabetic':
+        return 'translation COLLATE NOCASE ASC, stroke ASC';
+      default:
+        throw new Error('sort must be one of: short_first, long_first, alphabetic');
+    }
+  }
+
+  private parseOptionalString(value: unknown): string | null {
+    if (typeof value !== 'string') {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length === 0 ? null : trimmed;
+  }
+
+  private resolveOptionalDictionaryIdentifier(value: unknown): string | null {
+    const identifier = this.parseOptionalString(value);
+    if (!identifier) {
+      return null;
+    }
+    const idx = this.findDictionaryIndex(identifier);
+    return this.dictionaries.dicts[idx].identifier;
+  }
+
+  private enumerateEntries(params: Record<string, unknown>): Record<string, unknown> {
+    const dictionary = this.resolveOptionalDictionaryIdentifier(params.dictionary ?? params.name ?? params.identifier);
+    const { page, pageSize, offset } = this.parsePagination(params);
+    const orderBy = this.parseSortOrder(params.sort);
+
+    const whereParts: string[] = [];
+    const whereValues: unknown[] = [];
+    if (dictionary) {
+      whereParts.push('dictionary = ?');
+      whereValues.push(dictionary);
+    }
+    const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
+
+    const countStmt = this.db.prepare(`SELECT COUNT(*) AS count FROM entries ${whereClause}`);
+    const countRow = countStmt.get(...whereValues) as { count: number };
+    const total = countRow.count;
+
+    const entriesStmt = this.db.prepare(`
+      SELECT dictionary, stroke, translation
+      FROM entries
+      ${whereClause}
+      ORDER BY ${orderBy}
+      LIMIT ? OFFSET ?
+    `);
+    const rows = entriesStmt.all(...whereValues, pageSize, offset) as Array<{
+      dictionary: string;
+      stroke: string;
+      translation: string;
+    }>;
+
+    return {
+      entries: rows,
+      total,
+      page,
+      page_size: pageSize,
+      has_more: offset + rows.length < total,
+      sort: params.sort === undefined ? 'alphabetic' : String(params.sort),
+      dictionary,
+    };
+  }
+
+  private searchEntries(params: Record<string, unknown>): Record<string, unknown> {
+    const strokeQuery = this.parseOptionalString(params.stroke);
+    const outputQuery = this.parseOptionalString(params.output ?? params.translation);
+    const dictionary = this.resolveOptionalDictionaryIdentifier(params.dictionary ?? params.name ?? params.identifier);
+    const { page, pageSize, offset } = this.parsePagination(params);
+    const orderBy = this.parseSortOrder(params.sort);
+
+    if (!strokeQuery && !outputQuery) {
+      throw new Error('At least one of stroke or output is required');
+    }
+
+    const whereParts: string[] = [];
+    const whereValues: unknown[] = [];
+
+    if (dictionary) {
+      whereParts.push('dictionary = ?');
+      whereValues.push(dictionary);
+    }
+    if (strokeQuery) {
+      whereParts.push('LOWER(stroke) LIKE LOWER(?)');
+      whereValues.push(`%${strokeQuery}%`);
+    }
+    if (outputQuery) {
+      whereParts.push('LOWER(translation) LIKE LOWER(?)');
+      whereValues.push(`%${outputQuery}%`);
+    }
+
+    const whereClause = `WHERE ${whereParts.join(' AND ')}`;
+    const countStmt = this.db.prepare(`SELECT COUNT(*) AS count FROM entries ${whereClause}`);
+    const countRow = countStmt.get(...whereValues) as { count: number };
+    const total = countRow.count;
+
+    const entriesStmt = this.db.prepare(`
+      SELECT dictionary, stroke, translation
+      FROM entries
+      ${whereClause}
+      ORDER BY ${orderBy}
+      LIMIT ? OFFSET ?
+    `);
+    const rows = entriesStmt.all(...whereValues, pageSize, offset) as Array<{
+      dictionary: string;
+      stroke: string;
+      translation: string;
+    }>;
+
+    return {
+      entries: rows,
+      total,
+      page,
+      page_size: pageSize,
+      has_more: offset + rows.length < total,
+      sort: params.sort === undefined ? 'alphabetic' : String(params.sort),
+      stroke: strokeQuery,
+      output: outputQuery,
+      dictionary,
+    };
   }
 
   /**
