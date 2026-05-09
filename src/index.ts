@@ -5,6 +5,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createServer } from 'node:http';
 import { AddressInfo } from 'node:net';
+import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
 
 type BridgeResponse = {
@@ -80,7 +81,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const webDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), 'web');
+  const webDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'web');
   const server = await createStaticServer(webDir);
   const browser = await puppeteer.launch({
     headless: true,
