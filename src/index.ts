@@ -27,6 +27,12 @@ function contentTypeFor(filePath: string): string {
   return 'application/octet-stream';
 }
 
+const ISOLATION_HEADERS = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'require-corp',
+  'Cross-Origin-Resource-Policy': 'same-origin',
+} as const;
+
 async function createStaticServer(rootDir: string): Promise<{ baseUrl: string; close: () => Promise<void> }> {
   const server = createServer((req, res) => {
     const requestUrl = req.url ?? '/';
@@ -35,25 +41,29 @@ async function createStaticServer(rootDir: string): Promise<{ baseUrl: string; c
     const resolvedPath = path.resolve(rootDir, `.${relativePath}`);
 
     if (!resolvedPath.startsWith(rootDir)) {
-      res.writeHead(403);
+      res.writeHead(403, ISOLATION_HEADERS);
       res.end('Forbidden');
       return;
     }
 
     let filePath = resolvedPath;
     if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-      res.writeHead(404);
+      res.writeHead(404, ISOLATION_HEADERS);
       res.end('Not Found');
       return;
     }
 
     fs.readFile(filePath, (err, data) => {
       if (err) {
-        res.writeHead(500);
+        res.writeHead(500, ISOLATION_HEADERS);
         res.end('Internal Server Error');
         return;
       }
-      res.writeHead(200, { 'Content-Type': contentTypeFor(filePath), 'Cache-Control': 'no-store' });
+      res.writeHead(200, {
+        ...ISOLATION_HEADERS,
+        'Content-Type': contentTypeFor(filePath),
+        'Cache-Control': 'no-store',
+      });
       res.end(data);
     });
   });
