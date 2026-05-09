@@ -238,6 +238,11 @@ export class StrippedPlover {
   }
 
   private async loadDictionaries(): Promise<void> {
+    const maybeReady = (this.db as unknown as { ready?: Promise<void> }).ready;
+    if (maybeReady) {
+      await maybeReady;
+    }
+
     const stmt = this.db.prepare('SELECT * FROM dictionaries ORDER BY priority DESC');
     const rows = stmt.all() as Array<{
       name: string;
@@ -270,6 +275,10 @@ export class StrippedPlover {
     }
 
     this.dictionaries.setDicts(dicts);
+  }
+
+  setEventSink(eventSink: ((event: Record<string, unknown>) => void) | null): void {
+    this.eventSink = eventSink;
   }
 
   private setupSystem(): void {

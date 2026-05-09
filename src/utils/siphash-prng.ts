@@ -1,5 +1,3 @@
-import { randomBytes } from 'node:crypto';
-
 const MASK_64 = (1n << 64n) - 1n;
 
 function rotl(x: bigint, b: number): bigint {
@@ -106,13 +104,18 @@ export class SipHashPRNG {
       this.key = new Uint8Array(seed);
     } else {
       // Seed SipHash with CSPRNG as required
-      this.key = randomBytes(16);
+      this.key = new Uint8Array(16);
+      const cryptoObj = globalThis.crypto;
+      if (!cryptoObj?.getRandomValues) {
+        throw new Error('No CSPRNG available');
+      }
+      cryptoObj.getRandomValues(this.key);
     }
   }
 
   nextUint32(): number {
-    const block = Buffer.alloc(8);
-    block.writeBigUInt64LE(this.counter++);
+    const block = new Uint8Array(8);
+    new DataView(block.buffer).setBigUint64(0, this.counter++, true);
     const hash = siphash24(this.key, block);
     return Number(hash & 0xffffffffn);
   }

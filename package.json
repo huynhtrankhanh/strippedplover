@@ -9,11 +9,12 @@
     "stripped-plover": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run build:web",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:web": "tsc -p tsconfig.web.json && rollup -c rollup.config.mjs"
   },
   "keywords": [
     "stenography",
@@ -32,12 +33,19 @@
     "lmdb": "^3.5.1",
     "lodash": "^4.17.21",
     "posix-node": "^0.12.0",
+    "puppeteer": "^24.43.0",
     "python-wasm": "^0.28.1",
     "uuid": "^8.3.2",
     "wasi-js": "^1.7.2"
   },
   "devDependencies": {
+    "@rollup/plugin-alias": "^6.0.0",
+    "@rollup/plugin-commonjs": "^29.0.2",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-url": "^8.0.2",
     "@types/node": "^22.0.0",
+    "rollup": "^4.60.3",
     "typescript": "^5.7.0",
     "vitest": "^3.0.5"
   },

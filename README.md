@@ -8,8 +8,9 @@ Stripped Plover is a streamlined version of [Plover](https://github.com/opensten
 
 - **No UI**: Runs as a headless translation engine
 - **No keyboard capture**: Receives strokes via STDIO, doesn't capture keyboard
-- **No filesystem access**: All dictionaries are stored in SQLite and passed via protocol messages
-- **SQLite-backed dictionaries**: Uses Node.js built-in SQLite for fast entry insertion and updates
+- **Browser runtime core**: Engine runs inside a headless Chromium page
+- **No filesystem access**: Dictionaries are passed via protocol messages
+- **IndexedDB-backed dictionaries**: Dictionary persistence is delegated to browser IndexedDB
 - **JSON line protocol**: Simple request/response protocol over STDIO
 - **Preedit/Commit model**: Output designed for IME integration
 - **Import/Export**: Dictionary import/export via protocol messages
@@ -17,7 +18,7 @@ Stripped Plover is a streamlined version of [Plover](https://github.com/opensten
 - **Dictionary stack control**: RPCs and `{PLOVER:...}` commands (PRIORITY/TOGGLE/SOLO/END_SOLO) matching the `plover_dict_commands` syntax
 - **Dictionary state events**: Emits STDOUT events when translations change dictionary state, keeping hosts in sync
 - **Entry search and enumeration APIs**: Paginated dictionary entry listing and filtering with configurable sorting
-- **Sandboxed Python dictionaries**: Execute Python dictionary code in a WASM sandbox (read-only at runtime)
+- **Sandboxed Python dictionaries**: Available in core engine APIs; browser runtime currently supports JSON dictionaries only
 
 ## Dictionary Types
 
@@ -30,7 +31,7 @@ The dictionary type must be explicitly declared when importing - it is NOT infer
 
 ## Requirements
 
-- Node.js 22.5.0 or later (uses built-in SQLite module)
+- Node.js 22.5.0 or later
 
 ## Installation
 
@@ -47,7 +48,7 @@ npm start -- <database-path>
 node dist/index.js <database-path>
 ```
 
-The application requires a database path as an argument. You can use `:memory:` for an in-memory database or provide a file path for persistence.
+The application requires a database path argument for protocol compatibility. In the browser-backed runtime this value is used as the IndexedDB namespace.
 
 The engine reads JSON requests from stdin and writes JSON responses to stdout.
 

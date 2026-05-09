@@ -59,6 +59,8 @@ When Stripped Plover starts, it outputs a ready message:
 {"status": "ready"}
 ```
 
+In the default CLI, protocol handling is executed by a headless browser page. Dictionary persistence is managed by IndexedDB in that page and the CLI database argument is used as the IndexedDB namespace.
+
 ## Output Model: Structured Array Response
 
 Stripped Plover uses a structured array output model suitable for IME integration:
@@ -622,6 +624,8 @@ At least one of `stroke` or `output` is required.
 #### `import_dictionary`
 
 Import a dictionary from a protocol message. This creates a new dictionary or updates an existing one. The dictionary type must be explicitly specified.
+
+> Note: In the browser-backed CLI runtime, `type: "python"` currently returns a protocol error.
 
 **For JSON dictionaries:**
 ```json

@@ -81,7 +81,7 @@ describe('STDIO end-to-end', () => {
     }
   }, 60000);
 
-  it('handles import, translate, export, quit over STDIO with Python dictionary', async () => {
+  it('returns an error for Python dictionaries when running in browser runtime', async () => {
     const proc = spawn('node', ['dist/index.js', ':memory:'], { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] });
     const lines: string[] = [];
 
@@ -118,26 +118,10 @@ def lookup(key):
         }) + '\n'
       );
       const importResp = JSON.parse(await waitForLine(lines, 30000));
-      expect(importResp.result?.status).toBe('ok');
-      expect(importResp.result?.entries).toBe(2);
-      expect(importResp.result?.type).toBe('python');
+      expect(importResp.error?.code).toBe(-32000);
+      expect(String(importResp.error?.message ?? '')).toContain('not supported');
 
-      proc.stdin.write(
-        JSON.stringify({ id: '2', method: 'translate', params: { stroke: 'TEFT' } }) + '\n'
-      );
-      const translateResp = JSON.parse(await waitForLine(lines));
-      const preedit = translateResp.result?.output?.[0];
-      expect(preedit?.type).toBe('preedit');
-      expect(typeof preedit?.text === 'string' ? preedit.text.trim() : undefined).toBe('test');
-
-      proc.stdin.write(
-        JSON.stringify({ id: '3', method: 'export_dictionary', params: { name: 'python-dict' } }) + '\n'
-      );
-      const exportResp = JSON.parse(await waitForLine(lines));
-      expect(exportResp.result?.type).toBe('python');
-      expect(exportResp.result?.pythonCode).toBe(pythonCode);
-
-      proc.stdin.write(JSON.stringify({ id: '4', method: 'quit', params: {} }) + '\n');
+      proc.stdin.write(JSON.stringify({ id: '2', method: 'quit', params: {} }) + '\n');
       const quitResp = JSON.parse(await waitForLine(lines));
       expect(quitResp.result?.status).toBe('ok');
     } finally {

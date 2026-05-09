@@ -8,7 +8,7 @@ import { Translator, Translation } from '../translation.js';
 import { Stroke } from '../stroke.js';
 
 // Platform-specific back string
-const PLATFORM = process.platform;
+const PLATFORM = typeof process !== 'undefined' && process?.platform ? process.platform : 'linux';
 const BACK_STRING = PLATFORM === 'darwin'
   ? '{#Alt_L(BackSpace)}{^}'
   : '{#Control_L(BackSpace)}{^}';
