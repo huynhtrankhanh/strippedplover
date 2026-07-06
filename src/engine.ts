@@ -4,7 +4,7 @@
  * This module implements the main engine that communicates via JSON line protocol.
  */
 
-import { DatabaseSync } from './lmdb-database.js';
+import { DatabaseSync, type EntrySortOrder } from './lmdb-database.js';
 import { Stroke, normalizeSteno } from './stroke.js';
 import { StenoDictionary, StenoDictionaryCollection, StenoDictionaryLike, createJsonDictionary, createPythonDictionary, PythonDictionary, DictionaryType } from './dictionary/index.js';
 import { Translator, Translation } from './translation.js';
@@ -971,7 +971,7 @@ export class StrippedPlover {
     };
   }
 
-  private parseSortOrder(sort: unknown): string {
+  private parseSortOrder(sort: unknown): EntrySortOrder {
     const value = sort === undefined ? 'alphabetic' : String(sort);
     switch (value) {
       case 'short_first':
@@ -1033,7 +1033,7 @@ export class StrippedPlover {
 
   private sortEntries(
     entries: Array<{ dictionary: string; stroke: string; translation: string }>,
-    sort: string
+    sort: EntrySortOrder
   ): Array<{ dictionary: string; stroke: string; translation: string }> {
     const sorted = [...entries];
     if (sort === 'short_first') {
@@ -1065,10 +1065,12 @@ export class StrippedPlover {
     const dictionary = this.resolveOptionalDictionaryIdentifier(params.dictionary);
     const { page, pageSize, offset } = this.parsePagination(params);
     const sort = this.parseSortOrder(params.sort);
-    const filtered = this.listAllEntries().filter(entry => !dictionary || entry.dictionary === dictionary);
-    const sorted = this.sortEntries(filtered, sort);
-    const rows = sorted.slice(offset, offset + pageSize);
-    const total = sorted.length;
+    const { entries: rows, total } = this.db.queryEntries({
+      dictionary,
+      sort,
+      limit: pageSize,
+      offset,
+    });
 
     const result: Record<string, unknown> = {
       entries: rows,
@@ -1096,25 +1098,15 @@ export class StrippedPlover {
       throw new Error('At least one of stroke or output is required');
     }
 
-    const normalizedStroke = strokeQuery?.toLowerCase() ?? null;
-    const normalizedOutput = outputQuery?.toLowerCase() ?? null;
-    const filtered = this.listAllEntries().filter(entry => {
-      const stroke = entry.stroke.toLowerCase();
-      const output = entry.translation.toLowerCase();
-      if (dictionary && entry.dictionary !== dictionary) return false;
-      if (normalizedStroke) {
-        const strokeMatch = match === 'prefix' ? stroke.startsWith(normalizedStroke) : stroke.includes(normalizedStroke);
-        if (!strokeMatch) return false;
-      }
-      if (normalizedOutput) {
-        const outputMatch = match === 'prefix' ? output.startsWith(normalizedOutput) : output.includes(normalizedOutput);
-        if (!outputMatch) return false;
-      }
-      return true;
+    const { entries: rows, total } = this.db.queryEntries({
+      dictionary,
+      stroke: strokeQuery,
+      output: outputQuery,
+      match,
+      sort,
+      limit: pageSize,
+      offset,
     });
-    const sorted = this.sortEntries(filtered, sort);
-    const rows = sorted.slice(offset, offset + pageSize);
-    const total = sorted.length;
 
     const result: Record<string, unknown> = {
       entries: rows,
