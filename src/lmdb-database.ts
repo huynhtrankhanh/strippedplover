@@ -11,23 +11,6 @@ type DictionaryMeta = {
   python_code: string | null;
 };
 
-export type EntrySortOrder = 'alphabetic' | 'short_first' | 'long_first';
-
-export interface EntryQueryOptions {
-  dictionary?: string | null;
-  stroke?: string | null;
-  output?: string | null;
-  match?: 'substring' | 'prefix';
-  sort: EntrySortOrder;
-  limit: number;
-  offset: number;
-}
-
-export interface EntryQueryResult {
-  entries: Array<{ dictionary: string; stroke: string; translation: string }>;
-  total: number;
-}
-
 type StatementKind =
   | 'select-dictionaries'
   | 'insert-dictionary'
@@ -47,24 +30,6 @@ type StatementKind =
 
 const ENTRY_SEPARATOR = '\x1f';
 const ENTRY_SEPARATOR_END = String.fromCharCode(ENTRY_SEPARATOR.charCodeAt(0) + 1);
-const INDEX_SEPARATOR = '\x1f';
-const INDEX_SEPARATOR_END = String.fromCharCode(INDEX_SEPARATOR.charCodeAt(0) + 1);
-
-function indexKey(...parts: Array<string | number>): Buffer {
-  return Buffer.from(parts.map(part => String(part)).join(INDEX_SEPARATOR));
-}
-
-function indexPrefix(...parts: Array<string | number>): Buffer {
-  return Buffer.from(`${parts.map(part => String(part)).join(INDEX_SEPARATOR)}${INDEX_SEPARATOR}`);
-}
-
-function indexPrefixEnd(...parts: Array<string | number>): Buffer {
-  return Buffer.from(`${parts.map(part => String(part)).join(INDEX_SEPARATOR)}${INDEX_SEPARATOR_END}`);
-}
-
-function strokeLength(stroke: string): number {
-  return stroke.length === 0 ? 0 : stroke.split('/').length;
-}
 
 function normalizeSql(sql: string): string {
   return sql.trim().replace(/\s+/g, ' ').toUpperCase();
@@ -86,9 +51,6 @@ export class DatabaseSync {
   private root: RootDatabase<unknown, Buffer>;
   private dictionaries: Database<DictionaryMeta, Buffer>;
   private entries: Database<string, Buffer>;
-  private translationIndex: Database<string, Buffer>;
-  private strokeIndex: Database<string, Buffer>;
-  private lengthIndex: Database<string, Buffer>;
 
   constructor(path: string) {
     const dbPath = path === ':memory:' ? mkdtempSync(join(tmpdir(), 'strippedplover-lmdb-')) : path;
@@ -105,105 +67,14 @@ export class DatabaseSync {
       name: 'entries',
       encoding: 'string',
     });
-    this.translationIndex = this.root.openDB({
-      name: 'entries_by_translation',
-      encoding: 'string',
-    });
-    this.strokeIndex = this.root.openDB({
-      name: 'entries_by_stroke',
-      encoding: 'string',
-    });
-    this.lengthIndex = this.root.openDB({
-      name: 'entries_by_stroke_length',
-      encoding: 'string',
-    });
-    this.rebuildEntryIndexes();
   }
 
   exec(_sql: string): void {
-    // SQL DDL is retained for API compatibility; LMDB indexes are maintained below.
+    // SQLite-compatible no-op for PRAGMAs and BEGIN/COMMIT statements.
   }
 
   prepare(sql: string): LmdbStatement {
     return new LmdbStatement(this, sql);
-  }
-
-
-  private addEntryIndexes(dictionary: string, stroke: string, translation: string): void {
-    this.translationIndex.putSync(indexKey(translation.toLowerCase(), translation, stroke, dictionary), '');
-    this.strokeIndex.putSync(indexKey(stroke.toLowerCase(), stroke, dictionary), '');
-    this.lengthIndex.putSync(indexKey(strokeLength(stroke).toString().padStart(10, '0'), stroke, translation, dictionary), '');
-  }
-
-  private removeEntryIndexes(dictionary: string, stroke: string, translation: string): void {
-    this.translationIndex.removeSync(indexKey(translation.toLowerCase(), translation, stroke, dictionary));
-    this.strokeIndex.removeSync(indexKey(stroke.toLowerCase(), stroke, dictionary));
-    this.lengthIndex.removeSync(indexKey(strokeLength(stroke).toString().padStart(10, '0'), stroke, translation, dictionary));
-  }
-
-  private rebuildEntryIndexes(): void {
-    this.translationIndex.clearSync();
-    this.strokeIndex.clearSync();
-    this.lengthIndex.clearSync();
-    for (const { key, value } of this.entries.getRange({})) {
-      const keyText = (key as Buffer).toString('utf8');
-      const separator = keyText.indexOf(ENTRY_SEPARATOR);
-      if (separator === -1 || value === undefined) continue;
-      this.addEntryIndexes(keyText.slice(0, separator), keyText.slice(separator + ENTRY_SEPARATOR.length), value as string);
-    }
-  }
-
-  private unpackIndexEntry(key: Buffer, sort: EntrySortOrder): { dictionary: string; stroke: string; translation: string } | null {
-    const parts = key.toString('utf8').split(INDEX_SEPARATOR);
-    if (sort === 'alphabetic') {
-      const [, translation, stroke, dictionary] = parts;
-      return dictionary && stroke && translation !== undefined ? { dictionary, stroke, translation } : null;
-    }
-    const [, stroke, translation, dictionary] = parts;
-    return dictionary && stroke && translation !== undefined ? { dictionary, stroke, translation } : null;
-  }
-
-  private entryMatches(
-    entry: { dictionary: string; stroke: string; translation: string },
-    options: EntryQueryOptions
-  ): boolean {
-    if (options.dictionary && entry.dictionary !== options.dictionary) return false;
-    const match = options.match ?? 'substring';
-    if (options.stroke) {
-      const haystack = entry.stroke.toLowerCase();
-      const needle = options.stroke.toLowerCase();
-      if (match === 'prefix' ? !haystack.startsWith(needle) : !haystack.includes(needle)) return false;
-    }
-    if (options.output) {
-      const haystack = entry.translation.toLowerCase();
-      const needle = options.output.toLowerCase();
-      if (match === 'prefix' ? !haystack.startsWith(needle) : !haystack.includes(needle)) return false;
-    }
-    return true;
-  }
-
-  queryEntries(options: EntryQueryOptions): EntryQueryResult {
-    const index = options.sort === 'alphabetic' ? this.translationIndex : this.lengthIndex;
-    const prefix = options.sort === 'alphabetic' && options.match === 'prefix' && options.output
-      ? [options.output.toLowerCase()]
-      : options.sort !== 'alphabetic' && options.match === 'prefix' && options.stroke
-        ? []
-        : null;
-    const range = prefix && prefix.length > 0
-      ? { start: indexPrefix(...prefix), end: indexPrefixEnd(...prefix) }
-      : {};
-    const rows: Array<{ dictionary: string; stroke: string; translation: string }> = [];
-    let total = 0;
-    const rangeOptions = { ...range, reverse: options.sort === 'long_first' };
-    for (const { key } of index.getRange(rangeOptions)) {
-      const entry = this.unpackIndexEntry(key as Buffer, options.sort);
-      if (!entry || !this.entryMatches(entry, options)) continue;
-      if (total >= options.offset && rows.length < options.limit) {
-        rows.push(entry);
-      }
-      total++;
-    }
-    return { entries: rows, total };
   }
 
   // Helper methods used by statements
@@ -247,15 +118,10 @@ export class DatabaseSync {
     const key = Buffer.from(name);
     this.dictionaries.removeSync(key);
     // Remove all entries for this dictionary
-    for (const { key, value } of this.entries.getRange({
+    for (const { key } of this.entries.getRange({
       start: entryRangeStart(name),
       end: entryRangeEnd(name),
     })) {
-      const keyText = (key as Buffer).toString('utf8');
-      const stroke = keyText.slice(name.length + ENTRY_SEPARATOR.length);
-      if (value !== undefined) {
-        this.removeEntryIndexes(name, stroke, value as string);
-      }
       this.entries.removeSync(key as Buffer);
     }
   }
@@ -266,22 +132,11 @@ export class DatabaseSync {
   }
 
   setEntry(dictionary: string, stroke: string, translation: string): void {
-    const key = entryKey(dictionary, stroke);
-    const previous = this.entries.get(key);
-    if (previous !== undefined) {
-      this.removeEntryIndexes(dictionary, stroke, previous);
-    }
-    this.entries.putSync(key, translation);
-    this.addEntryIndexes(dictionary, stroke, translation);
+    this.entries.putSync(entryKey(dictionary, stroke), translation);
   }
 
   deleteEntry(dictionary: string, stroke: string): boolean {
-    const key = entryKey(dictionary, stroke);
-    const previous = this.entries.get(key);
-    if (previous !== undefined) {
-      this.removeEntryIndexes(dictionary, stroke, previous);
-    }
-    return Boolean(this.entries.removeSync(key) as unknown);
+    return Boolean(this.entries.removeSync(entryKey(dictionary, stroke)) as unknown);
   }
 
   *iterateEntries(dictionary: string): Generator<{ stroke: string; translation: string }> {
