@@ -4,7 +4,7 @@
  * This module implements the main engine that communicates via JSON line protocol.
  */
 
-import { DatabaseSync } from './lmdb-database.js';
+import { DatabaseSync } from './sqlite-database.js';
 import { Stroke, normalizeSteno } from './stroke.js';
 import { StenoDictionary, StenoDictionaryCollection, StenoDictionaryLike, createJsonDictionary, createPythonDictionary, PythonDictionary, DictionaryType } from './dictionary/index.js';
 import { Translator, Translation } from './translation.js';
@@ -226,14 +226,40 @@ export class StrippedPlover {
         python_code TEXT
       );
       CREATE TABLE IF NOT EXISTS entries (
-        dictionary TEXT,
-        stroke TEXT,
-        translation TEXT,
+        dictionary TEXT NOT NULL,
+        stroke TEXT NOT NULL,
+        translation TEXT NOT NULL,
         PRIMARY KEY (dictionary, stroke),
         FOREIGN KEY (dictionary) REFERENCES dictionaries(name) ON DELETE CASCADE
       );
-      CREATE INDEX IF NOT EXISTS idx_translation ON entries(translation);
-      CREATE INDEX IF NOT EXISTS idx_dictionary ON entries(dictionary);
+      CREATE INDEX IF NOT EXISTS idx_entries_dictionary ON entries(dictionary);
+      CREATE INDEX IF NOT EXISTS idx_entries_dictionary_translation ON entries(dictionary, translation);
+      CREATE INDEX IF NOT EXISTS idx_entries_dictionary_translation_nocase ON entries(dictionary, translation COLLATE NOCASE);
+      CREATE INDEX IF NOT EXISTS idx_entries_dictionary_stroke_nocase ON entries(dictionary, stroke COLLATE NOCASE);
+      CREATE INDEX IF NOT EXISTS idx_entries_translation ON entries(translation);
+      CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
+        dictionary UNINDEXED,
+        stroke,
+        translation,
+        content='entries',
+        content_rowid='rowid',
+        tokenize='trigram'
+      );
+      CREATE TRIGGER IF NOT EXISTS entries_ai AFTER INSERT ON entries BEGIN
+        INSERT INTO entries_fts(rowid, dictionary, stroke, translation)
+        VALUES (new.rowid, new.dictionary, new.stroke, new.translation);
+      END;
+      CREATE TRIGGER IF NOT EXISTS entries_ad AFTER DELETE ON entries BEGIN
+        INSERT INTO entries_fts(entries_fts, rowid, dictionary, stroke, translation)
+        VALUES ('delete', old.rowid, old.dictionary, old.stroke, old.translation);
+      END;
+      CREATE TRIGGER IF NOT EXISTS entries_au AFTER UPDATE ON entries BEGIN
+        INSERT INTO entries_fts(entries_fts, rowid, dictionary, stroke, translation)
+        VALUES ('delete', old.rowid, old.dictionary, old.stroke, old.translation);
+        INSERT INTO entries_fts(rowid, dictionary, stroke, translation)
+        VALUES (new.rowid, new.dictionary, new.stroke, new.translation);
+      END;
+      INSERT INTO entries_fts(entries_fts) VALUES('rebuild');
     `);
   }
 
