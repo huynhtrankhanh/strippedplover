@@ -237,6 +237,8 @@ export class StrippedPlover {
       CREATE INDEX IF NOT EXISTS idx_entries_dictionary_translation_nocase ON entries(dictionary, translation COLLATE NOCASE);
       CREATE INDEX IF NOT EXISTS idx_entries_dictionary_stroke_nocase ON entries(dictionary, stroke COLLATE NOCASE);
       CREATE INDEX IF NOT EXISTS idx_entries_translation ON entries(translation);
+      CREATE INDEX IF NOT EXISTS idx_entries_translation_stroke_dictionary_nocase ON entries(translation COLLATE NOCASE, stroke COLLATE NOCASE, dictionary);
+      CREATE INDEX IF NOT EXISTS idx_entries_stroke_translation_dictionary_nocase ON entries(stroke COLLATE NOCASE, translation COLLATE NOCASE, dictionary);
       CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
         dictionary UNINDEXED,
         stroke,
@@ -259,8 +261,14 @@ export class StrippedPlover {
         INSERT INTO entries_fts(rowid, dictionary, stroke, translation)
         VALUES (new.rowid, new.dictionary, new.stroke, new.translation);
       END;
-      INSERT INTO entries_fts(entries_fts) VALUES('rebuild');
     `);
+
+    const entryCount = this.db.prepare('SELECT COUNT(*) AS count FROM entries').get() as { count: number };
+    const ftsCount = this.db.prepare('SELECT COUNT(*) AS count FROM entries_fts').get() as { count: number };
+    if (entryCount.count > 0 && ftsCount.count === 0) {
+      this.db.exec("INSERT INTO entries_fts(entries_fts) VALUES('rebuild');");
+    }
+
   }
 
   private async loadDictionaries(): Promise<void> {
@@ -1039,20 +1047,6 @@ export class StrippedPlover {
     return this.dictionaries.dicts[idx].identifier;
   }
 
-  private listAllEntries(): Array<{ dictionary: string; stroke: string; translation: string }> {
-    const entries: Array<{ dictionary: string; stroke: string; translation: string }> = [];
-    for (const dictionary of this.dictionaries.dicts) {
-      for (const [strokeTuple, translation] of dictionary.items()) {
-        entries.push({
-          dictionary: dictionary.identifier,
-          stroke: strokeTuple.join('/'),
-          translation,
-        });
-      }
-    }
-    return entries;
-  }
-
   private entryLength(stroke: string): number {
     return stroke.replace(/\//g, '').length;
   }
@@ -1087,14 +1081,31 @@ export class StrippedPlover {
     return sorted;
   }
 
+  private sortOrderSql(sort: string, tableAlias = 'entries'): string {
+    const prefix = tableAlias ? `${tableAlias}.` : '';
+    if (sort === 'short_first') {
+      return `LENGTH(REPLACE(${prefix}stroke, '/', '')) ASC, ${prefix}stroke COLLATE NOCASE ASC, ${prefix}translation COLLATE NOCASE ASC`;
+    }
+    if (sort === 'long_first') {
+      return `LENGTH(REPLACE(${prefix}stroke, '/', '')) DESC, ${prefix}stroke COLLATE NOCASE ASC, ${prefix}translation COLLATE NOCASE ASC`;
+    }
+    return `${prefix}translation COLLATE NOCASE ASC, ${prefix}stroke COLLATE NOCASE ASC, ${prefix}dictionary ASC`;
+  }
+
   private enumerateEntries(params: Record<string, unknown>): Record<string, unknown> {
     const dictionary = this.resolveOptionalDictionaryIdentifier(params.dictionary);
     const { page, pageSize, offset } = this.parsePagination(params);
     const sort = this.parseSortOrder(params.sort);
-    const filtered = this.listAllEntries().filter(entry => !dictionary || entry.dictionary === dictionary);
-    const sorted = this.sortEntries(filtered, sort);
-    const rows = sorted.slice(offset, offset + pageSize);
-    const total = sorted.length;
+    const where = dictionary ? 'WHERE dictionary = ?' : '';
+    const bind = dictionary ? [dictionary] : [];
+    const total = (this.db.prepare(`SELECT COUNT(*) AS count FROM entries ${where}`).get(...bind) as { count: number }).count;
+    const rows = this.db.prepare(`
+      SELECT dictionary, stroke, translation
+      FROM entries
+      ${where}
+      ORDER BY ${this.sortOrderSql(sort, '')}
+      LIMIT ? OFFSET ?
+    `).all(...bind, pageSize, offset) as Array<{ dictionary: string; stroke: string; translation: string }>;
 
     const result: Record<string, unknown> = {
       entries: rows,
@@ -1110,6 +1121,14 @@ export class StrippedPlover {
     return result;
   }
 
+  private escapeLike(value: string): string {
+    return value.replace(/[\\%_]/g, char => `\\${char}`);
+  }
+
+  private ftsQuery(value: string): string {
+    return value.replace(/"/g, '""');
+  }
+
   private searchEntries(params: Record<string, unknown>): Record<string, unknown> {
     const strokeQuery = this.parseOptionalString(params.stroke);
     const outputQuery = this.parseOptionalString(params.output);
@@ -1122,25 +1141,42 @@ export class StrippedPlover {
       throw new Error('At least one of stroke or output is required');
     }
 
-    const normalizedStroke = strokeQuery?.toLowerCase() ?? null;
-    const normalizedOutput = outputQuery?.toLowerCase() ?? null;
-    const filtered = this.listAllEntries().filter(entry => {
-      const stroke = entry.stroke.toLowerCase();
-      const output = entry.translation.toLowerCase();
-      if (dictionary && entry.dictionary !== dictionary) return false;
-      if (normalizedStroke) {
-        const strokeMatch = match === 'prefix' ? stroke.startsWith(normalizedStroke) : stroke.includes(normalizedStroke);
-        if (!strokeMatch) return false;
-      }
-      if (normalizedOutput) {
-        const outputMatch = match === 'prefix' ? output.startsWith(normalizedOutput) : output.includes(normalizedOutput);
-        if (!outputMatch) return false;
-      }
-      return true;
-    });
-    const sorted = this.sortEntries(filtered, sort);
-    const rows = sorted.slice(offset, offset + pageSize);
-    const total = sorted.length;
+    const clauses: string[] = [];
+    const bind: Array<string | number> = [];
+    let from = 'entries';
+    let alias = '';
+
+    if (dictionary) {
+      clauses.push('dictionary = ?');
+      bind.push(dictionary);
+    }
+
+    const addLikeClause = (column: 'stroke' | 'translation', query: string): void => {
+      const pattern = match === 'prefix' ? `${this.escapeLike(query)}%` : `%${this.escapeLike(query)}%`;
+      clauses.push(`${column} LIKE ? ESCAPE '\\' COLLATE NOCASE`);
+      bind.push(pattern);
+    };
+
+    if (match === 'substring' && outputQuery && outputQuery.length >= 3 && !strokeQuery) {
+      from = 'entries_fts AS entries';
+      alias = 'entries';
+      clauses.push('entries_fts MATCH ?');
+      bind.push(`translation:"${this.ftsQuery(outputQuery)}"`);
+    } else {
+      if (strokeQuery) addLikeClause('stroke', strokeQuery);
+      if (outputQuery) addLikeClause('translation', outputQuery);
+    }
+
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const countSql = `SELECT COUNT(*) AS count FROM ${from} ${where}`;
+    const total = (this.db.prepare(countSql).get(...bind) as { count: number }).count;
+    const rows = this.db.prepare(`
+      SELECT dictionary, stroke, translation
+      FROM ${from}
+      ${where}
+      ORDER BY ${this.sortOrderSql(sort, alias)}
+      LIMIT ? OFFSET ?
+    `).all(...bind, pageSize, offset) as Array<{ dictionary: string; stroke: string; translation: string }>;
 
     const result: Record<string, unknown> = {
       entries: rows,
