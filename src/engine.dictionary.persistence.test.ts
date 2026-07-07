@@ -6,7 +6,7 @@ import { StrippedPlover } from './engine.js';
 
 describe('dictionary persistence and lookup', () => {
   function makeDbPath(): string {
-    return join(mkdtempSync(join(tmpdir(), 'strippedplover-test-')), 'lmdb');
+    return join(mkdtempSync(join(tmpdir(), 'strippedplover-test-')), 'sqlite');
   }
 
   it('persists imported JSON dictionaries across engine instances', async () => {

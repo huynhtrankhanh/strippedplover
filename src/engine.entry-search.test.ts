@@ -148,4 +148,28 @@ describe('entry search and enumeration APIs', () => {
     expect(entries.every(entry => entry.dictionary === '/dicts/main.json')).toBe(true);
     expect(response.result?.total).toBe(4);
   });
+
+  it('maintains SQLite indexes and FTS rows for imported dictionaries', async () => {
+    const { engine, mainName } = await createEngineWithEntries();
+    const db = (engine as unknown as { db: { prepare: (sql: string) => { all: (...args: unknown[]) => unknown[]; get: (...args: unknown[]) => unknown } } }).db;
+
+    const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'entries'").all() as Array<{ name: string }>;
+    expect(indexes.map(index => index.name)).toEqual(expect.arrayContaining([
+      'idx_entries_dictionary',
+      'idx_entries_dictionary_translation',
+      'idx_entries_dictionary_translation_nocase',
+      'idx_entries_dictionary_stroke_nocase',
+      'idx_entries_translation',
+    ]));
+
+    const ftsTable = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'entries_fts'").get() as { name: string } | undefined;
+    expect(ftsTable?.name).toBe('entries_fts');
+
+    const ftsRows = db.prepare('SELECT dictionary, stroke, translation FROM entries_fts WHERE translation MATCH ? AND dictionary = ?').all('sun', mainName);
+    expect(ftsRows).toEqual(expect.arrayContaining([
+      { dictionary: mainName, stroke: 'ST', translation: 'sun' },
+      { dictionary: mainName, stroke: 'TKPWRAOEUS', translation: 'sunrise' },
+    ]));
+  });
+
 });
