@@ -1,0 +1,4 @@
+[submodule "vendor/cowasm-source"]
+	path = vendor/cowasm-source
+	url = https://github.com/sagemathinc/cowasm.git
+	branch = main
