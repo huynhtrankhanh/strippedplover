@@ -4,6 +4,7 @@
  * This module handles steno system setup and configuration.
  */
 
+import { readFileSync } from 'node:fs';
 import { setupStroke, type StrokeConfig } from '../stroke.js';
 import * as EnglishStenotype from './english-stenotype.js';
 
@@ -45,6 +46,8 @@ export let ORTHOGRAPHY_RULES_ALIASES: Map<string, string> = new Map();
 export let DICTIONARIES_ROOT = '';
 export let DEFAULT_DICTIONARIES: readonly string[] = [];
 
+const wordlistCache = new Map<string, Map<string, number>>();
+
 /**
  * Build key order map from keys and numbers
  */
@@ -63,10 +66,30 @@ function buildKeyOrder(keys: readonly string[], numbers: Map<string, string>): M
 /**
  * Load a wordlist file and return as a map of word -> priority
  */
-function loadWordlist(_filename: string | null, _assetsDir: string): Map<string, number> {
-  // For now, return an empty map - wordlist loading can be implemented later
-  // when we have access to the assets directory
-  return new Map();
+function loadWordlist(filename: string | null, _assetsDir: string): Map<string, number> {
+  if (filename === null) {
+    return new Map();
+  }
+
+  const cached = wordlistCache.get(filename);
+  if (cached) return cached;
+
+  const contents = readFileSync(new URL(`./assets/${filename}`, import.meta.url), 'utf8');
+  const words = new Map<string, number>();
+
+  for (const line of contents.split(/\r?\n/)) {
+    if (!line) continue;
+
+    // Words can contain spaces, so split on the final space before the priority.
+    const match = /^(.*) (\d+)$/.exec(line);
+    if (!match) {
+      throw new Error(`Invalid orthography word list entry: ${line}`);
+    }
+    words.set(match[1], Number(match[2]));
+  }
+
+  wordlistCache.set(filename, words);
+  return words;
 }
 
 /**

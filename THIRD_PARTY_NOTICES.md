@@ -4,6 +4,13 @@ This project is licensed under GPL-2.0-or-later. It also vendors and/or
 redistributes third-party packages and generated artifacts whose license notices
 must be preserved when redistributing this repository or derived builds.
 
+## Plover orthography word list
+
+`src/system/assets/american_english_words.txt` is sourced from the upstream
+Plover project at commit `81cef57401111a40be23673e31a4e45665a28ef3` and is
+distributed under Plover's GPL-2.0-or-later license. The upstream source is
+https://github.com/openstenoproject/plover/blob/81cef57401111a40be23673e31a4e45665a28ef3/plover/assets/american_english_words.txt.
+
 ## Vendored runtime packages
 
 | Path | Package | Version | License | Upstream source |
