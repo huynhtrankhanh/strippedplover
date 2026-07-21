@@ -1,3 +1,6 @@
+# known bugs
+* orthography rules are not correctly implemented because there is no word list in the repo. To implement correctly, the upstream plover repo must be consulted
+
 # Stripped Plover
 
 **A minimal STDIO-based stenography translation engine for IME integration.**
