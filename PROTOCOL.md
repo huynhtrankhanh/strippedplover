@@ -962,6 +962,8 @@ Strokes use the RTFCRE format (steno notation). Examples:
 Translations can include engine commands using the `{PLOVER:command}` syntax. Supported commands include:
 
 - `{PLOVER:SET_CONFIG:'option':value}` - Set engine configuration options
+- `{PLOVER:ADD_TRANSLATION:...}` - Emit an asynchronous `plover:add_translation` event to STDOUT
+- `{PLOVER:LOOKUP:...}` - Emit an asynchronous `plover:lookup` event to STDOUT
   - `start_attached`: Whether to suppress spaces
   - `start_capitalized`: Whether to capitalize
   - `space_char`: Character to use for spaces
@@ -972,6 +974,21 @@ Unsupported commands (these are no-ops):
 - `{PLOVER:RESUME}` - Does not make sense without keyboard capture
 - `{PLOVER:SUSPEND}` - Does not make sense without keyboard capture
 - `{PLOVER:QUIT}` - Use the `quit` RPC method instead
+
+
+### Host-handled Plover command events
+
+Stripped Plover does not implement Plover's UI-driven add-translation or lookup flows internally. Instead, dictionary translations can request those host actions with `{PLOVER:ADD_TRANSLATION:...}` and `{PLOVER:LOOKUP:...}`. When triggered during translation, Stripped Plover emits one asynchronous STDIO event and leaves the host to decide how to handle it:
+
+```json
+{"event":"plover:add_translation","command":"add_translation","argument":"TPH/TEFT:test"}
+```
+
+```json
+{"event":"plover:lookup","command":"lookup","argument":"test"}
+```
+
+Only these two host-handled Plover command events are exposed. Unknown `{PLOVER:...}` commands remain no-ops unless documented as supported elsewhere in this protocol. The `argument` field contains the raw text after the command name and first colon, or an empty string when no argument is supplied. These events may arrive in between request/response lines.
 
 ### Dictionary stack commands (Plover dict commands syntax)
 
