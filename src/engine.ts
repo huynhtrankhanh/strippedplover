@@ -167,6 +167,7 @@ export class StrippedPlover {
 
   // Commands that are not supported
   private static UNSUPPORTED_COMMANDS = new Set(['toggle', 'stop', 'resume', 'suspend', 'quit']);
+  private static EVENT_COMMANDS = new Set(['add_translation', 'lookup']);
 
   constructor(databasePath: string) {
     this.initDatabase(databasePath);
@@ -335,6 +336,11 @@ export class StrippedPlover {
     }
 
     try {
+      if (StrippedPlover.EVENT_COMMANDS.has(commandName)) {
+        this.emitPloverCommandEvent(commandName, cmdline);
+        return;
+      }
+
       if (commandName === 'set_config' && cmdline) {
         this.handleSetConfig(cmdline);
       } else if (commandName === 'priority_dict') {
@@ -478,6 +484,19 @@ export class StrippedPlover {
       readonly: d.readonly,
       entries: d.length,
     }));
+  }
+
+  private emitPloverCommandEvent(commandName: string, argument: string): void {
+    if (!this.eventSink) return;
+    try {
+      this.eventSink({
+        event: `plover:${commandName}`,
+        command: commandName,
+        argument,
+      });
+    } catch (err) {
+      console.error(`Error emitting plover:${commandName} event:`, err);
+    }
   }
 
   private emitDictionaryStateEvent(): void {

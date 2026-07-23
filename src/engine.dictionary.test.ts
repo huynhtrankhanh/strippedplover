@@ -104,6 +104,22 @@ describe('plover dictionary commands', () => {
     });
   });
 
+  it('emits events only for add_translation and lookup commands', () => {
+    const engine = createEngine(['main.json']);
+    const events: Record<string, unknown>[] = [];
+    (engine as any).eventSink = (event: Record<string, unknown>) => events.push(event);
+
+    engine.handleEngineCommand('ADD_TRANSLATION:TPH/TEFT:test');
+    engine.handleEngineCommand('LOOKUP:test');
+    engine.handleEngineCommand('UNKNOWN:test');
+    engine.handleEngineCommand('TOGGLE');
+
+    expect(events).toEqual([
+      { event: 'plover:add_translation', command: 'add_translation', argument: 'TPH/TEFT:test' },
+      { event: 'plover:lookup', command: 'lookup', argument: 'test' },
+    ]);
+  });
+
   it('supports SOLO_DICT and restores with END_SOLO_DICT', async () => {
     const engine = createEngine(['main.json', 'user.json', 'commands.json']);
 

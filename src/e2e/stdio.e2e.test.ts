@@ -145,4 +145,62 @@ def lookup(key):
       rl.close();
     }
   }, 60000);
+
+  it('emits host-handled Plover command events over STDIO', async () => {
+    const proc = spawn('node', ['dist/index.js', ':memory:'], { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] });
+    const lines: string[] = [];
+
+    const rl = readline.createInterface({ input: proc.stdout });
+    rl.on('line', line => lines.push(line));
+
+    try {
+      const ready = JSON.parse(await waitForLine(lines));
+      expect(ready.status).toBe('ready');
+
+      proc.stdin.write(
+        JSON.stringify({
+          id: '1',
+          method: 'import_dictionary',
+          params: {
+            name: 'events-dict',
+            type: 'json',
+            data: {
+              TPH: '{PLOVER:ADD_TRANSLATION:TPH/TEFT:test}',
+              HRAOUP: '{PLOVER:LOOKUP:test}',
+            },
+          },
+        }) + '\n'
+      );
+      const importResp = JSON.parse(await waitForLine(lines));
+      expect(importResp.result?.status).toBe('ok');
+
+      proc.stdin.write(JSON.stringify({ id: '2', method: 'translate', params: { stroke: 'TPH' } }) + '\n');
+      const addTranslationEvent = JSON.parse(await waitForLine(lines));
+      expect(addTranslationEvent).toEqual({
+        event: 'plover:add_translation',
+        command: 'add_translation',
+        argument: 'TPH/TEFT:test',
+      });
+      const addTranslationResp = JSON.parse(await waitForLine(lines));
+      expect(addTranslationResp.id).toBe('2');
+
+      proc.stdin.write(JSON.stringify({ id: '3', method: 'translate', params: { stroke: 'HRAOUP' } }) + '\n');
+      const lookupEvent = JSON.parse(await waitForLine(lines));
+      expect(lookupEvent).toEqual({
+        event: 'plover:lookup',
+        command: 'lookup',
+        argument: 'test',
+      });
+      const lookupResp = JSON.parse(await waitForLine(lines));
+      expect(lookupResp.id).toBe('3');
+
+      proc.stdin.write(JSON.stringify({ id: '4', method: 'quit', params: {} }) + '\n');
+      const quitResp = JSON.parse(await waitForLine(lines));
+      expect(quitResp.result?.status).toBe('ok');
+    } finally {
+      proc.kill();
+      rl.close();
+    }
+  }, 60000);
+
 });

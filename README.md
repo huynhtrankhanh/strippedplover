@@ -1,6 +1,3 @@
-# Known bug
-Two commands {plover:add_translation} and {plover:lookup} are not supported. Implement them by simply emitting events when these commands are triggered. Then document the new feature in the protocol document.
-
 # Stripped Plover
 
 **A minimal STDIO-based stenography translation engine for IME integration.**
@@ -19,6 +16,7 @@ Stripped Plover is a streamlined version of [Plover](https://github.com/opensten
 - **Stateful translation**: Supports multi-stroke translations and undo
 - **Dictionary stack control**: RPCs and `{PLOVER:...}` commands (PRIORITY/TOGGLE/SOLO/END_SOLO) matching the `plover_dict_commands` syntax
 - **Dictionary state events**: Emits STDOUT events when translations change dictionary state, keeping hosts in sync
+- **Plover command events**: Emits STDOUT events for `{PLOVER:ADD_TRANSLATION}` and `{PLOVER:LOOKUP}` so hosts can provide UI-driven dictionary actions
 - **Entry search and enumeration APIs**: Paginated dictionary entry listing and filtering with configurable sorting
 - **Sandboxed Python dictionaries**: Execute Python dictionary code in a WASM sandbox (read-only at runtime)
 
