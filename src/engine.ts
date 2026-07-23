@@ -349,8 +349,6 @@ export class StrippedPlover {
       } else if (commandName === 'end_solo_dict') {
         this.handleEndSoloDict();
         this.emitDictionaryStateEvent();
-      } else if (commandName === 'add_translation' || commandName === 'lookup') {
-        this.emitPloverCommandEvent(commandName, cmdline);
       }
     } catch (e) {
       console.warn('Failed to handle engine command:', command, e);
@@ -482,10 +480,6 @@ export class StrippedPlover {
     }));
   }
 
-  setEventSink(sink: ((event: Record<string, unknown>) => void) | null): void {
-    this.eventSink = sink;
-  }
-
   private emitDictionaryStateEvent(): void {
     if (!this.eventSink) return;
     try {
@@ -496,19 +490,6 @@ export class StrippedPlover {
       });
     } catch (err) {
       console.error('Error emitting dictionary_state event:', err);
-    }
-  }
-
-  private emitPloverCommandEvent(command: 'add_translation' | 'lookup', argumentsText: string): void {
-    if (!this.eventSink) return;
-    try {
-      this.eventSink({
-        event: 'plover_command',
-        command,
-        arguments: argumentsText,
-      });
-    } catch (err) {
-      console.error('Error emitting plover_command event:', err);
     }
   }
 
