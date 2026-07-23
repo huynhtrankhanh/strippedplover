@@ -167,6 +167,7 @@ def lookup(key):
             data: {
               TPH: '{PLOVER:ADD_TRANSLATION:TPH/TEFT:test}',
               HRAOUP: '{PLOVER:LOOKUP:test}',
+              KOPBG: '{PLOVER:CONFIGURE:machine}',
             },
           },
         }) + '\n'
@@ -194,7 +195,17 @@ def lookup(key):
       const lookupResp = JSON.parse(await waitForLine(lines));
       expect(lookupResp.id).toBe('3');
 
-      proc.stdin.write(JSON.stringify({ id: '4', method: 'quit', params: {} }) + '\n');
+      proc.stdin.write(JSON.stringify({ id: '4', method: 'translate', params: { stroke: 'KOPBG' } }) + '\n');
+      const configureEvent = JSON.parse(await waitForLine(lines));
+      expect(configureEvent).toEqual({
+        event: 'plover:configure',
+        command: 'configure',
+        argument: 'machine',
+      });
+      const configureResp = JSON.parse(await waitForLine(lines));
+      expect(configureResp.id).toBe('4');
+
+      proc.stdin.write(JSON.stringify({ id: '5', method: 'quit', params: {} }) + '\n');
       const quitResp = JSON.parse(await waitForLine(lines));
       expect(quitResp.result?.status).toBe('ok');
     } finally {

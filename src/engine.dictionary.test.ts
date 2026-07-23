@@ -104,19 +104,21 @@ describe('plover dictionary commands', () => {
     });
   });
 
-  it('emits events only for add_translation and lookup commands', () => {
+  it('emits events only for host-handled commands', () => {
     const engine = createEngine(['main.json']);
     const events: Record<string, unknown>[] = [];
     (engine as any).eventSink = (event: Record<string, unknown>) => events.push(event);
 
     engine.handleEngineCommand('ADD_TRANSLATION:TPH/TEFT:test');
     engine.handleEngineCommand('LOOKUP:test');
+    engine.handleEngineCommand('CONFIGURE:machine');
     engine.handleEngineCommand('UNKNOWN:test');
     engine.handleEngineCommand('TOGGLE');
 
     expect(events).toEqual([
       { event: 'plover:add_translation', command: 'add_translation', argument: 'TPH/TEFT:test' },
       { event: 'plover:lookup', command: 'lookup', argument: 'test' },
+      { event: 'plover:configure', command: 'configure', argument: 'machine' },
     ]);
   });
 
