@@ -1,3 +1,6 @@
+# Known bug
+Two commands {plover:add_translation} and {plover:lookup} are not supported. Implement them by simply emitting events when these commands are triggered. Then document the new feature in the protocol document.
+
 # Stripped Plover
 
 **A minimal STDIO-based stenography translation engine for IME integration.**
