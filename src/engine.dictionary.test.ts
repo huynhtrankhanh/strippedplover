@@ -104,6 +104,21 @@ describe('plover dictionary commands', () => {
     });
   });
 
+
+  it('emits events for ADD_TRANSLATION and LOOKUP commands', () => {
+    const engine = createEngine(['commands.json']);
+    const events: Record<string, unknown>[] = [];
+    engine.setEventSink(event => events.push(event));
+
+    engine.handleEngineCommand('ADD_TRANSLATION');
+    engine.handleEngineCommand('LOOKUP:selected text');
+
+    expect(events).toEqual([
+      { event: 'plover_command', command: 'add_translation', arguments: '' },
+      { event: 'plover_command', command: 'lookup', arguments: 'selected text' },
+    ]);
+  });
+
   it('supports SOLO_DICT and restores with END_SOLO_DICT', async () => {
     const engine = createEngine(['main.json', 'user.json', 'commands.json']);
 
