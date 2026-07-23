@@ -89,25 +89,12 @@ When the engine starts or is reset, it is in the "initial" state:
 - No initial space is emitted before the first output
 - After output is produced, subsequent translations may include a leading space depending on the engine state
 
-Engine commands are supported through dictionary translations using `{PLOVER:command}` syntax.
-
-Dictionary stack commands such as `{PLOVER:PRIORITY_DICT:...}`, `{PLOVER:TOGGLE_DICT:...}`, `{PLOVER:SOLO_DICT:...}`, and `{PLOVER:END_SOLO_DICT}` update dictionary state and emit `dictionary_state` events.
-
-User-interface commands `{PLOVER:ADD_TRANSLATION}` and `{PLOVER:LOOKUP}` cannot open UI in this headless engine, so they emit protocol events that hosts can handle:
-
-```json
-{"event":"plover_command","command":"add_translation","arguments":""}
-{"event":"plover_command","command":"lookup","arguments":"optional command text"}
-```
-
-The `arguments` field contains any text after the first colon in the command, or an empty string when no arguments were supplied.
-
-The following commands are explicitly unsupported and are no-ops:
-- `PLOVER:TOGGLE`
-- `PLOVER:STOP`
-- `PLOVER:RESUME`
-- `PLOVER:SUSPEND`
-- `PLOVER:QUIT`
+Engine commands are supported through dictionary translations using `{PLOVER:command}` syntax, except for:
+- `PLOVER:TOGGLE` - Not supported (no-op)
+- `PLOVER:STOP` - Not supported (no-op)
+- `PLOVER:RESUME` - Not supported (no-op)
+- `PLOVER:SUSPEND` - Not supported (no-op)
+- `PLOVER:QUIT` - Not supported (no-op)
 
 ## Methods
 
