@@ -167,7 +167,7 @@ export class StrippedPlover {
 
   // Commands that are not supported
   private static UNSUPPORTED_COMMANDS = new Set(['toggle', 'stop', 'resume', 'suspend', 'quit']);
-  private static EVENT_COMMANDS = new Set(['add_translation', 'lookup']);
+  private static EVENT_COMMANDS = new Set(['add_translation', 'lookup', 'configure']);
 
   constructor(databasePath: string) {
     this.initDatabase(databasePath);
