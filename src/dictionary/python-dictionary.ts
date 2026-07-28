@@ -51,13 +51,16 @@ export class PythonDictionary implements StenoDictionaryLike {
   }
 
   private async initializePython(pythonCode: string): Promise<void> {
-    // Use python-wasm (CPython) with full filesystem for proper stdlib support
+    // Load CPython and its standard library into a private in-memory filesystem.
+    // The vendored Node adapter deliberately does not add a native filesystem
+    // mount, and stdio is omitted so dictionary code has no ambient host handles.
     const py: PythonRuntime = await asyncPython({
       fs: 'everything',
+      noStdio: true,
     });
 
     // SECURITY NOTE: Sandboxing is enforced at the WASM/JS layer in vendor/@cowasm/kernel
-    // by removing dangerous bindings (child_process, posix process operations).
+    // by removing native filesystem, stdio, child_process, and POSIX process bindings.
     // Python module blocking is NOT used because it can be bypassed.
 
     // Execute the Python code directly
