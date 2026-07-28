@@ -248,6 +248,41 @@ def lookup(key):
  * These tests ensure that malicious Python code cannot escape the sandbox.
  */
 describe('python sandbox security', () => {
+  it('cannot read files from the host filesystem', async () => {
+    const code = `
+LONGEST_KEY = 1
+
+def lookup(key):
+    try:
+        with open('/etc/passwd', 'r') as host_file:
+            return 'escaped: ' + host_file.read(32)
+    except Exception as e:
+        return f'blocked: {type(e).__name__}'
+`;
+
+    const dict = await PythonDictionary.loadFromCode('host-read-test', code);
+    await expect(dict.get(['TEST'])).resolves.toMatch(/^blocked:/);
+    dict.terminate();
+  }, 30000);
+
+  it('cannot write files to the host filesystem', async () => {
+    const code = `
+LONGEST_KEY = 1
+
+def lookup(key):
+    try:
+        with open('/tmp/strippedplover-sandbox-escape', 'w') as host_file:
+            host_file.write('escaped')
+        return 'escaped'
+    except Exception as e:
+        return f'blocked: {type(e).__name__}'
+`;
+
+    const dict = await PythonDictionary.loadFromCode('host-write-test', code);
+    await expect(dict.get(['TEST'])).resolves.toMatch(/^blocked:/);
+    dict.terminate();
+  }, 30000);
+
   it('blocks os.system shell command execution', async () => {
     const code = `
 LONGEST_KEY = 1

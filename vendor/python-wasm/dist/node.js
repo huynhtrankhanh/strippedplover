@@ -71,7 +71,6 @@ function getFilesystem(opts) {
                 zipfile: pythonEverything,
                 mountpoint: "/usr/lib/python3.11",
             },
-            { type: "native" },
         ];
     }
     if (opts?.fs == "stdlib") {
@@ -81,7 +80,6 @@ function getFilesystem(opts) {
                 zipfile: pythonStdlib,
                 mountpoint: "/usr/lib/python3.11",
             },
-            { type: "native" },
         ];
     }
     if (opts?.fs == "bundle" || !(0, fs_1.existsSync)(PYTHONEXECUTABLE)) {
@@ -101,13 +99,12 @@ function getFilesystem(opts) {
                 zipfile: pythonStdlib,
                 mountpoint: "/usr/lib/python3.11",
             },
-            // And the rest of the native filesystem.   **Sandboxing is not at all our goal here yet.**
-            { type: "native" },
         ];
     }
     else {
-        // native
-        return [{ type: "native" }];
+        // Never implicitly mount the host filesystem.  Callers that need a native
+        // mount must pass an explicit filesystem specification to the kernel.
+        return [];
     }
 }
 //# sourceMappingURL=node.js.map
