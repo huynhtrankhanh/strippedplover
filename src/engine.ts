@@ -222,7 +222,6 @@ export class StrippedPlover {
         name TEXT PRIMARY KEY,
         type TEXT NOT NULL,
         enabled BOOLEAN DEFAULT 1,
-        readonly BOOLEAN DEFAULT 0,
         priority INTEGER,
         python_code TEXT
       );
@@ -278,7 +277,6 @@ export class StrippedPlover {
       name: string;
       type: string;
       enabled: number;
-      readonly: number;
       python_code: string | null;
     }>;
 
@@ -289,14 +287,12 @@ export class StrippedPlover {
         const dict = new StenoDictionary(this.db, {
           identifier: row.name,
           enabled: Boolean(row.enabled),
-          readonly: Boolean(row.readonly),
         });
         dicts.push(dict);
       } else if (row.type === 'python' && row.python_code) {
         try {
           const dict = await createPythonDictionary(row.name, row.python_code);
           dict.enabled = Boolean(row.enabled);
-          // Python dictionaries are always readonly
           dicts.push(dict);
         } catch (e) {
           console.error(`Failed to load python dictionary ${row.name}:`, e);
@@ -477,11 +473,10 @@ export class StrippedPlover {
     return working;
   }
 
-  private describeDictionaries(): Array<{ identifier: string; enabled: boolean; readonly: boolean; entries: number }> {
+  private describeDictionaries(): Array<{ identifier: string; enabled: boolean; entries: number }> {
     return this.dictionaries.dicts.map(d => ({
       identifier: d.identifier,
       enabled: d.enabled,
-      readonly: d.readonly,
       entries: d.length,
     }));
   }
@@ -844,20 +839,19 @@ export class StrippedPlover {
     }
 
     const strokeTuple = normalizeSteno(stroke, false);
-    let dictionary: StenoDictionaryLike;
+    let dictionary: StenoDictionary;
 
     if (name) {
       const d = this.dictionaries.get(name);
       if (!d) {
         throw new Error(`Dictionary not found: ${name}`);
       }
+      if (!(d instanceof StenoDictionary)) {
+        throw new Error(`Dictionary does not expose concrete entries: ${name}`);
+      }
       dictionary = d;
     } else {
-      dictionary = this.dictionaries.firstWritable();
-    }
-
-    if (dictionary.readonly) {
-      throw new Error(`Dictionary is read-only: ${dictionary.identifier}`);
+      dictionary = this.dictionaries.firstWithEntries();
     }
 
     dictionary.set(strokeTuple, translation);
@@ -880,8 +874,8 @@ export class StrippedPlover {
       if (!dictionary) {
         throw new Error(`Dictionary not found: ${name}`);
       }
-      if (dictionary.readonly) {
-        throw new Error(`Dictionary is read-only: ${name}`);
+      if (!(dictionary instanceof StenoDictionary)) {
+        throw new Error(`Dictionary does not expose concrete entries: ${name}`);
       }
       if (!dictionary.has(strokeTuple)) {
         throw new Error(`Entry not found: ${stroke}`);
@@ -890,15 +884,14 @@ export class StrippedPlover {
     } else {
       let found = false;
       for (const dictionary of this.dictionaries.dicts) {
-        if (dictionary.has(strokeTuple)) {
-          if (dictionary.readonly) continue;
+        if (dictionary instanceof StenoDictionary && dictionary.has(strokeTuple)) {
           dictionary.delete(strokeTuple);
           found = true;
           break;
         }
       }
       if (!found) {
-        throw new Error(`Entry not found or all dictionaries are read-only: ${stroke}`);
+        throw new Error(`Entry not found in a dictionary with concrete entries: ${stroke}`);
       }
     }
 
@@ -915,16 +908,20 @@ export class StrippedPlover {
     }
 
     const strokeTuple = normalizeSteno(stroke, false);
-    let dictionary: StenoDictionaryLike | null = null;
+    let dictionary: StenoDictionary | null = null;
 
     if (name) {
-      dictionary = this.dictionaries.get(name);
-      if (!dictionary) {
+      const selected = this.dictionaries.get(name);
+      if (!selected) {
         throw new Error(`Dictionary not found: ${name}`);
       }
+      if (!(selected instanceof StenoDictionary)) {
+        throw new Error(`Dictionary does not expose concrete entries: ${name}`);
+      }
+      dictionary = selected;
     } else {
       for (const d of this.dictionaries.dicts) {
-        if (d.has(strokeTuple)) {
+        if (d instanceof StenoDictionary && d.has(strokeTuple)) {
           dictionary = d;
           break;
         }
@@ -932,10 +929,6 @@ export class StrippedPlover {
       if (!dictionary) {
         throw new Error(`Entry not found: ${stroke}`);
       }
-    }
-
-    if (dictionary.readonly) {
-      throw new Error(`Dictionary is read-only: ${dictionary.identifier}`);
     }
 
     dictionary.set(strokeTuple, translation);
@@ -994,6 +987,9 @@ export class StrippedPlover {
     // Python dictionaries may not have enumerable entries
     if (dictionary instanceof PythonDictionary) {
       throw new Error('Cannot get entries from Python dictionary. Use export_dictionary instead.');
+    }
+    if (!(dictionary instanceof StenoDictionary)) {
+      throw new Error(`Dictionary does not expose concrete entries: ${name}`);
     }
 
     const entries = dictionary.items().map(([strokeTuple, translation]) => ({
@@ -1244,6 +1240,9 @@ export class StrippedPlover {
         pythonCode: dictionary.pythonCode,
       };
     } else {
+      if (!(dictionary instanceof StenoDictionary)) {
+        throw new Error(`Dictionary does not expose concrete entries: ${name}`);
+      }
       // Export JSON dictionary as entries
       const data: Record<string, string> = {};
       for (const [strokeTuple, translation] of dictionary.items()) {
@@ -1307,8 +1306,8 @@ export class StrippedPlover {
 
       // Persist to DB
       const stmt = this.db.prepare(`
-        INSERT OR REPLACE INTO dictionaries (name, type, enabled, readonly, priority, python_code)
-        VALUES (?, 'python', ?, 1, ?, ?)
+        INSERT OR REPLACE INTO dictionaries (name, type, enabled, priority, python_code)
+        VALUES (?, 'python', ?, ?, ?)
       `);
       // Use current priority or max+1? For now, we update priorities after insert
       stmt.run(name, loaded.enabled ? 1 : 0, 0, pythonCode);
@@ -1336,17 +1335,21 @@ export class StrippedPlover {
         dictionary = createJsonDictionary(name, {}, this.db);
         const dicts = [...this.dictionaries.dicts, dictionary];
         this.dictionaries.setDicts(dicts);
-      } else if (dictionary.readonly) {
-        throw new Error(`Dictionary is read-only: ${name}`);
+      } else if (!(dictionary instanceof StenoDictionary)) {
+        throw new Error(`Dictionary does not expose concrete entries: ${name}`);
+      }
+
+      if (!(dictionary instanceof StenoDictionary)) {
+        throw new Error(`Dictionary does not expose concrete entries: ${name}`);
       }
 
       // Persist to DB if new
       if (isNew) {
          const stmt = this.db.prepare(`
-          INSERT OR REPLACE INTO dictionaries (name, type, enabled, readonly, priority)
-          VALUES (?, 'json', ?, ?, ?)
+          INSERT OR REPLACE INTO dictionaries (name, type, enabled, priority)
+          VALUES (?, 'json', ?, ?)
         `);
-        stmt.run(name, dictionary.enabled ? 1 : 0, dictionary.readonly ? 1 : 0, 0);
+        stmt.run(name, dictionary.enabled ? 1 : 0, 0);
         this.updateDictionaryPriorityInDb();
       }
 

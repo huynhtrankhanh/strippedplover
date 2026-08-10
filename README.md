@@ -18,14 +18,14 @@ Stripped Plover is a streamlined version of [Plover](https://github.com/opensten
 - **Dictionary state events**: Emits STDOUT events when translations change dictionary state, keeping hosts in sync
 - **Plover command events**: Emits STDOUT events for `{PLOVER:ADD_TRANSLATION}`, `{PLOVER:LOOKUP}`, and `{PLOVER:CONFIGURE}` so hosts can provide UI-driven dictionary actions
 - **Entry search and enumeration APIs**: Paginated dictionary entry listing and filtering with configurable sorting
-- **Sandboxed Python dictionaries**: Execute Python dictionary code in a WASM sandbox (read-only at runtime)
+- **Sandboxed Python dictionaries**: Execute Python dictionary code in a WASM sandbox (without concrete entries)
 
 ## Dictionary Types
 
 Stripped Plover supports two dictionary types:
 
 - **JSON dictionaries**: Store explicit stroke-to-translation entries. Writable at runtime.
-- **Python dictionaries**: Store Python code implementing `lookup()` function. Read-only at runtime.
+- **Python dictionaries**: Store Python code implementing `lookup()` function. Does not expose concrete entries.
 
 The dictionary type must be explicitly declared when importing - it is NOT inferred from any file extension or path.
 
@@ -69,7 +69,7 @@ See [PROTOCOL.md](PROTOCOL.md) for complete protocol documentation.
 | `set_dictionary_enabled` | Enable or disable a specific dictionary |
 | `toggle_dictionaries` | Apply multiple enable/disable toggles using `+`, `-`, `!` prefixes |
 | `solo_dictionaries` / `end_solo_dictionaries` | Enter/exit temporary solo mode for dictionaries |
-| `get_dictionary_state` | Return full dictionary stack state (order, enabled, readonly, entries, solo flag) |
+| `get_dictionary_state` | Return full dictionary stack state (order, enabled, entries, solo flag) |
 | `enumerate_entries` | List entries with pagination and sorting |
 | `search_entries` | Search entries by stroke and/or output with pagination and sorting |
 | `lookup` | Look up a stroke |

@@ -19,8 +19,8 @@ function createEngine(identifiers: string[]): StrippedPlover {
 
     // We should populate the DB too for consistency if we want full testing.
     // Insert into dictionaries table
-    const stmt = db.prepare('INSERT OR IGNORE INTO dictionaries (name, type, enabled, readonly, priority) VALUES (?, ?, ?, ?, ?)');
-    stmt.run(identifier, 'json', 1, 0, 0);
+    const stmt = db.prepare('INSERT OR IGNORE INTO dictionaries (name, type, enabled, priority) VALUES (?, ?, ?, ?)');
+    stmt.run(identifier, 'json', 1, 0);
 
     return dict;
   });

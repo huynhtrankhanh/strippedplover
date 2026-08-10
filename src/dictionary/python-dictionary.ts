@@ -23,7 +23,6 @@ export class PythonDictionary implements StenoDictionaryLike {
   private _hasReverseLookup = false;
   private _entries: Array<[string[], string]> = [];
   private _length = -1;
-  readonly = true;
   enabled: boolean;
 
   private constructor(name: string, pythonCode: string, enabled = true) {
@@ -195,22 +194,6 @@ def __safe_reverse_lookup(value):
   async has(strokeTuple: string[]): Promise<boolean> {
     const result = await this.get(strokeTuple);
     return result !== null;
-  }
-
-  set(_strokeTuple: string[], _translation: string): void {
-    throw new Error('Unsupported operation: Python dictionary is read-only');
-  }
-
-  delete(_strokeTuple: string[]): boolean {
-    throw new Error('Unsupported operation: Python dictionary is read-only');
-  }
-
-  clear(): void {
-    throw new Error('Unsupported operation: Python dictionary is read-only');
-  }
-
-  update(_entries: Iterable<[string[], string]>): void {
-    throw new Error('Unsupported operation: Python dictionary is read-only');
   }
 
   /**
