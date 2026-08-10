@@ -119,7 +119,7 @@ def lookup(key):
       );
       const importResp = JSON.parse(await waitForLine(lines, 30000));
       expect(importResp.result?.status).toBe('ok');
-      expect(importResp.result?.entries).toBe(2);
+      expect(importResp.result?.entries).toBe(-1);
       expect(importResp.result?.type).toBe('python');
 
       proc.stdin.write(

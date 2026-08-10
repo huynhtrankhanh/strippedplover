@@ -263,9 +263,25 @@ function strokeFromSteno(steno: string): number {
   let hasNumber = cfg.numberKey !== null && [...cfg.numbers.values()].some(
     number => steno.includes(number.replace('-', ''))
   );
-  if (cfg.numberKey && remaining.startsWith('#')) {
-    hasNumber = true;
-    remaining = remaining.slice(1);
+  if (cfg.numberKey) {
+    const numberKey = cfg.numberKey.replace('-', '');
+    const firstNumberKeyIndex = remaining.indexOf(numberKey);
+    if (firstNumberKeyIndex !== -1) {
+      const secondNumberKeyIndex = remaining.indexOf(
+        numberKey,
+        firstNumberKeyIndex + numberKey.length,
+      );
+      if (secondNumberKeyIndex !== -1) {
+        throw new Error(`Duplicate number key: ${steno}`);
+      }
+      if (firstNumberKeyIndex !== 0 && !cfg.feralNumberKey) {
+        throw new Error(`Number key must be leading: ${steno}`);
+      }
+      hasNumber = true;
+      remaining =
+        remaining.slice(0, firstNumberKeyIndex) +
+        remaining.slice(firstNumberKeyIndex + numberKey.length);
+    }
   }
   
   // Check for explicit hyphen to determine left/right boundary

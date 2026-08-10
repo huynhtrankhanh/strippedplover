@@ -814,11 +814,16 @@ export class StrippedPlover {
       throw new Error('Dictionary name is required');
     }
 
-    const dicts = this.dictionaries.dicts.filter(d => d.identifier !== name);
-    if (dicts.length === this.dictionaries.dicts.length) {
+    const dictionary = this.dictionaries.get(name);
+    if (!dictionary) {
       throw new Error(`Dictionary not found: ${name}`);
     }
 
+    if (dictionary instanceof PythonDictionary) {
+      dictionary.terminate();
+    }
+
+    const dicts = this.dictionaries.dicts.filter(d => d.identifier !== name);
     this.dictionaries.setDicts(dicts);
 
     // Remove from DB
@@ -1288,15 +1293,14 @@ export class StrippedPlover {
         throw new Error('Merge is not supported for Python dictionaries. Python dictionaries store code, not entries.');
       }
 
-      let dictionary = this.dictionaries.get(name);
-      if (dictionary) {
-        if (dictionary instanceof PythonDictionary) {
-          dictionary.terminate();
-        }
-      }
+      const dictionary = this.dictionaries.get(name);
 
-      // Create new Python dictionary from code
+      // Create the replacement before destroying the active runtime, so a
+      // failed import leaves the existing dictionary usable.
       const loaded = await createPythonDictionary(name, pythonCode);
+      if (dictionary instanceof PythonDictionary) {
+        dictionary.terminate();
+      }
       
       if (!dictionary) {
         this.dictionaries.setDicts([...this.dictionaries.dicts, loaded]);

@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { StrippedPlover } from './engine.js';
-import { StenoDictionary } from './dictionary/index.js';
+import { PythonDictionary, StenoDictionary } from './dictionary/index.js';
 
 function createEngine(identifiers: string[]): StrippedPlover {
   const engine = new StrippedPlover(':memory:');
@@ -98,6 +98,32 @@ describe('dictionary management RPC methods', () => {
       'dicts/commands.json': false,
     });
   });
+
+  it('terminates and deletes a removed Python dictionary', async () => {
+    const engine = new StrippedPlover(':memory:');
+    await engine.handleRequest({
+      id: 1,
+      method: 'import_dictionary',
+      params: {
+        name: 'dynamic.py',
+        type: 'python',
+        pythonCode: `LONGEST_KEY = 1\ndef lookup(key):\n    raise KeyError(key)`,
+      },
+    });
+
+    const dictionary = (engine as any).dictionaries.get('dynamic.py') as PythonDictionary;
+    const terminate = vi.spyOn(dictionary, 'terminate');
+
+    await engine.handleRequest({
+      id: 2,
+      method: 'remove_dictionary',
+      params: { name: 'dynamic.py' },
+    });
+
+    expect(terminate).toHaveBeenCalledTimes(1);
+    expect((engine as any).dictionaries.get('dynamic.py')).toBeNull();
+    expect((engine as any).db.prepare('SELECT name FROM dictionaries WHERE name = ?').get('dynamic.py')).toBeUndefined();
+  }, 30000);
 });
 
 describe('plover dictionary commands', () => {

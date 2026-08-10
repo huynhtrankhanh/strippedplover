@@ -197,27 +197,26 @@ def lookup(key):
     dict.terminate();
   }, 30000);
 
-  it('enumerates DICTIONARY entries for export', async () => {
+  it('treats DICTIONARY as private implementation state', async () => {
     const code = `
-LONGEST_KEY = 2
+LONGEST_KEY = 1
 
 DICTIONARY = {
-    ('TEFT',): 'test',
-    ('HEL', 'HROE'): 'hello',
+    ('TEFT',): 'do not introspect me',
 }
 
 def lookup(key):
-    if key in DICTIONARY:
-        return DICTIONARY[key]
+    if key == ('TEFT',):
+        return 'actual lookup result'
     raise KeyError(key)
 `;
 
     const dict = await PythonDictionary.loadFromCode('export-dict', code);
 
-    expect(dict.length).toBe(2);
-    const items = dict.items();
-    expect(items).toContainEqual([['TEFT'], 'test']);
-    expect(items).toContainEqual([['HEL', 'HROE'], 'hello']);
+    expect(dict.length).toBe(-1);
+    expect(dict.longestKey).toBe(1);
+    expect(await dict.get(['TEFT'])).toBe('actual lookup result');
+    expect(await dict.reverseLookup('do not introspect me')).toEqual(new Set());
 
     dict.terminate();
   }, 30000);
