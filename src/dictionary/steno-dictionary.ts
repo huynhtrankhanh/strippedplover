@@ -117,6 +117,35 @@ export class StenoDictionary implements StenoDictionaryLike {
   }
 
   /**
+   * Insert a translation only when the stroke is currently absent.
+   */
+  insertIfAbsent(strokeTuple: string[], translation: string): boolean {
+    const stroke = strokeTuple.join('/');
+    const stmt = this.db.prepare(
+      'INSERT INTO entries (dictionary, stroke, translation) VALUES (?, ?, ?) ON CONFLICT(dictionary, stroke) DO NOTHING'
+    );
+    const result = stmt.run(this._identifier, stroke, translation);
+    const inserted = Number(result.changes ?? 0) > 0;
+
+    if (inserted && strokeTuple.length > this._longestKey) {
+      this._longestKey = strokeTuple.length;
+    }
+    return inserted;
+  }
+
+  /**
+   * Replace a translation only when it still has the expected value.
+   */
+  replaceIfTranslation(strokeTuple: string[], expected: string, translation: string): boolean {
+    const stroke = strokeTuple.join('/');
+    const stmt = this.db.prepare(
+      'UPDATE entries SET translation = ? WHERE dictionary = ? AND stroke = ? AND translation = ?'
+    );
+    const result = stmt.run(translation, this._identifier, stroke, expected);
+    return Number(result.changes ?? 0) > 0;
+  }
+
+  /**
    * Delete an entry by stroke
    */
   delete(strokeTuple: string[]): boolean {
