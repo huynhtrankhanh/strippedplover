@@ -740,15 +740,15 @@ Export a dictionary as a protocol message.
 
 Entry operations are only available for JSON dictionaries. Python dictionaries do not expose concrete entries.
 
-#### `add_entry`
+#### `add_entry_safely`
 
-Add an entry to a dictionary.
+Add an entry to a dictionary only if its stroke is absent.
 
 **Request:**
 ```json
 {
   "id": "9",
-  "method": "add_entry",
+  "method": "add_entry_safely",
   "params": {
     "stroke": "TEFT",
     "translation": "test",
@@ -765,11 +765,16 @@ The `name` parameter is optional. If not specified, the entry is added to the fi
   "id": "9",
   "result": {
     "status": "ok",
+    "conflict": false,
     "stroke": "TEFT",
     "translation": "test"
   }
 }
 ```
+
+If the stroke already exists, the dictionary is unchanged and the result has
+`status: "conflict"`, `conflict: true`, and `existing_translation` containing
+its current value.
 
 #### `remove_entry`
 
@@ -800,24 +805,25 @@ The `name` parameter is optional. If not specified, the entry is removed from th
 }
 ```
 
-#### `update_entry`
+#### `replace_entry`
 
-Update an existing entry in a dictionary.
+Replace an entry only if its translation still matches the value observed by the caller.
 
 **Request:**
 ```json
 {
   "id": "11",
-  "method": "update_entry",
+  "method": "replace_entry",
   "params": {
     "stroke": "TEFT",
     "translation": "testing",
-    "name": "my-dictionary"
+    "name": "my-dictionary",
+    "expected_translation": "test"
   }
 }
 ```
 
-The `name` parameter is optional. If not specified, the entry is updated in the first dictionary that contains it.
+The `name` parameter is optional. If not specified, the first dictionary with concrete entries is selected.
 
 **Response:**
 ```json
@@ -825,11 +831,16 @@ The `name` parameter is optional. If not specified, the entry is updated in the 
   "id": "11",
   "result": {
     "status": "ok",
+    "conflict": false,
     "stroke": "TEFT",
     "translation": "testing"
   }
 }
 ```
+
+If the entry is absent or its translation no longer matches
+`expected_translation`, the dictionary is unchanged and the result has
+`status: "conflict"` and `conflict: true`.
 
 ### Lookup Operations
 

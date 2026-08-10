@@ -645,14 +645,14 @@ export class StrippedPlover {
         case 'remove_dictionary':
           result = this.removeDictionary(params);
           break;
-        case 'add_entry':
-          result = this.addEntry(params);
+        case 'add_entry_safely':
+          result = this.addEntrySafely(params);
           break;
         case 'remove_entry':
           result = this.removeEntry(params);
           break;
-        case 'update_entry':
-          result = this.updateEntry(params);
+        case 'replace_entry':
+          result = this.replaceEntry(params);
           break;
         case 'lookup':
           result = await this.lookup(params);
@@ -835,7 +835,22 @@ export class StrippedPlover {
     return { status: 'ok', name };
   }
 
-  private addEntry(params: Record<string, unknown>): Record<string, unknown> {
+  private concreteDictionary(name?: string): StenoDictionary {
+    if (!name) {
+      return this.dictionaries.firstWithEntries();
+    }
+
+    const dictionary = this.dictionaries.get(name);
+    if (!dictionary) {
+      throw new Error(`Dictionary not found: ${name}`);
+    }
+    if (!(dictionary instanceof StenoDictionary)) {
+      throw new Error(`Dictionary does not expose concrete entries: ${name}`);
+    }
+    return dictionary;
+  }
+
+  private addEntrySafely(params: Record<string, unknown>): Record<string, unknown> {
     const stroke = params.stroke as string;
     const translation = params.translation as string;
     const name = params.name as string | undefined;
@@ -845,24 +860,17 @@ export class StrippedPlover {
     }
 
     const strokeTuple = normalizeSteno(stroke, false);
-    let dictionary: StenoDictionary;
-
-    if (name) {
-      const d = this.dictionaries.get(name);
-      if (!d) {
-        throw new Error(`Dictionary not found: ${name}`);
-      }
-      if (!(d instanceof StenoDictionary)) {
-        throw new Error(`Dictionary does not expose concrete entries: ${name}`);
-      }
-      dictionary = d;
-    } else {
-      dictionary = this.dictionaries.firstWithEntries();
+    const dictionary = this.concreteDictionary(name);
+    if (!dictionary.insertIfAbsent(strokeTuple, translation)) {
+      return {
+        status: 'conflict',
+        conflict: true,
+        stroke: strokeTuple.join('/'),
+        existing_translation: dictionary.get(strokeTuple),
+      };
     }
 
-    dictionary.set(strokeTuple, translation);
-
-    return { status: 'ok', stroke: strokeTuple.join('/'), translation };
+    return { status: 'ok', conflict: false, stroke: strokeTuple.join('/'), translation };
   }
 
   private removeEntry(params: Record<string, unknown>): Record<string, unknown> {
@@ -904,42 +912,23 @@ export class StrippedPlover {
     return { status: 'ok', stroke: strokeTuple.join('/') };
   }
 
-  private updateEntry(params: Record<string, unknown>): Record<string, unknown> {
+  private replaceEntry(params: Record<string, unknown>): Record<string, unknown> {
     const stroke = params.stroke as string;
     const translation = params.translation as string;
+    const expected = params.expected_translation;
     const name = params.name as string | undefined;
 
-    if (!stroke || !translation) {
-      throw new Error('Both stroke and translation are required');
+    if (!stroke || !translation || typeof expected !== 'string') {
+      throw new Error('Stroke, translation, and expected translation are required');
     }
 
     const strokeTuple = normalizeSteno(stroke, false);
-    let dictionary: StenoDictionary | null = null;
-
-    if (name) {
-      const selected = this.dictionaries.get(name);
-      if (!selected) {
-        throw new Error(`Dictionary not found: ${name}`);
-      }
-      if (!(selected instanceof StenoDictionary)) {
-        throw new Error(`Dictionary does not expose concrete entries: ${name}`);
-      }
-      dictionary = selected;
-    } else {
-      for (const d of this.dictionaries.dicts) {
-        if (d instanceof StenoDictionary && d.has(strokeTuple)) {
-          dictionary = d;
-          break;
-        }
-      }
-      if (!dictionary) {
-        throw new Error(`Entry not found: ${stroke}`);
-      }
+    const dictionary = this.concreteDictionary(name);
+    if (!dictionary.replaceIfTranslation(strokeTuple, expected, translation)) {
+      return { status: 'conflict', conflict: true, stroke: strokeTuple.join('/') };
     }
 
-    dictionary.set(strokeTuple, translation);
-
-    return { status: 'ok', stroke: strokeTuple.join('/'), translation };
+    return { status: 'ok', conflict: false, stroke: strokeTuple.join('/'), translation };
   }
 
   private async lookup(params: Record<string, unknown>): Promise<Record<string, unknown>> {

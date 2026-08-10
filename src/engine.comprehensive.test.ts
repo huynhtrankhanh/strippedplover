@@ -283,15 +283,15 @@ describe('StrippedPlover Comprehensive Tests', () => {
 
           await engine.handleRequest({
               id: 2,
-              method: 'add_entry',
+              method: 'add_entry_safely',
               params: { stroke: 'TEFT', translation: 'test' }
           });
           expect(await translate('TEFT')).toBe('test');
 
           await engine.handleRequest({
               id: 3,
-              method: 'update_entry',
-              params: { stroke: 'TEFT', translation: 'updated' }
+              method: 'replace_entry',
+              params: { stroke: 'TEFT', translation: 'updated', expected_translation: 'test' }
           });
           await engine.handleRequest({ id: 4, method: 'reset_state' });
           expect(await translate('TEFT')).toBe('updated');

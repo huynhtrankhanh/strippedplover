@@ -30,7 +30,7 @@ New comprehensive tests were added in `src/engine.comprehensive.test.ts` coverin
 *   **Dictionary Priorities**: Verified that `prioritize_dictionaries` correctly changes translation results based on dictionary order.
 *   **Dictionary Management**: Verified `set_dictionary_enabled` and `remove_dictionary`.
 *   **Solo Mode**: Verified `solo_dictionaries` and `end_solo_dictionaries` correctly isolate and restore dictionary states.
-*   **CRUD**: Verified `add_entry`, `update_entry`, and `remove_entry`.
+*   **CRUD**: Verified conflict-aware `add_entry_safely`, `replace_entry`, and `remove_entry`.
 *   **Python Dictionaries**: Verified that Python dictionaries can be imported and used for translation.
 
 ## Test Results
