@@ -1037,15 +1037,15 @@ export class StrippedPlover {
     return trimmed.length === 0 ? null : trimmed;
   }
 
-  private parseSearchMatchMode(value: unknown): 'substring' | 'prefix' {
+  private parseSearchMatchMode(value: unknown): 'substring' | 'prefix' | 'exact' {
     if (value === undefined) {
       return 'substring';
     }
     const normalized = String(value);
-    if (normalized === 'substring' || normalized === 'prefix') {
+    if (normalized === 'substring' || normalized === 'prefix' || normalized === 'exact') {
       return normalized;
     }
-    throw new Error('match must be one of: substring, prefix');
+    throw new Error('match must be one of: substring, prefix, exact');
   }
 
   private resolveOptionalDictionaryIdentifier(value: unknown): string | null {
@@ -1162,9 +1162,14 @@ export class StrippedPlover {
     }
 
     const addLikeClause = (column: 'stroke' | 'translation', query: string): void => {
-      const pattern = match === 'prefix' ? `${this.escapeLike(query)}%` : `%${this.escapeLike(query)}%`;
-      clauses.push(`${column} LIKE ? ESCAPE '\\' COLLATE NOCASE`);
-      bind.push(pattern);
+      if (match === 'exact') {
+        clauses.push(`${column} = ? COLLATE NOCASE`);
+        bind.push(query);
+      } else {
+        const pattern = match === 'prefix' ? `${this.escapeLike(query)}%` : `%${this.escapeLike(query)}%`;
+        clauses.push(`${column} LIKE ? ESCAPE '\\' COLLATE NOCASE`);
+        bind.push(pattern);
+      }
     };
 
     if (match === 'substring' && outputQuery && outputQuery.length >= 3 && !strokeQuery) {

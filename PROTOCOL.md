@@ -574,13 +574,13 @@ Parameters:
 Search dictionary entries by stroke and/or output text with pagination and sorting.
 
 Parameters:
-- `stroke` (string, optional): Case-insensitive substring match against stroke text
-- `output` (string, optional): Case-insensitive substring match against translation text
+- `stroke` (string, optional): Case-insensitive match against stroke text
+- `output` (string, optional): Case-insensitive match against translation text
 - `dictionary` (string, optional): Dictionary identifier filter (supports suffix matching)
 - `page` (integer, optional): 1-based page index (default: `1`)
 - `page_size` (integer, optional): Number of rows per page (default: `50`, max: `500`)
 - `sort` (string, optional): `short_first`, `long_first`, or `alphabetic` (default: `alphabetic`)
-- `match` (string, optional): `substring` (default) or `prefix`
+- `match` (string, optional): `substring` (default), `prefix`, or `exact`
 
 At least one of `stroke` or `output` is required.
 
