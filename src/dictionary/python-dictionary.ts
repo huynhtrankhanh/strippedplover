@@ -57,15 +57,16 @@ export class PythonDictionary implements StenoDictionaryLike {
       noStdio: true,
     });
 
-    // SECURITY NOTE: Sandboxing is enforced at the WASM/JS layer in vendor/@cowasm/kernel
-    // by removing native filesystem, stdio, child_process, and POSIX process bindings.
-    // Python module blocking is NOT used because it can be bypassed.
+    try {
+      // SECURITY NOTE: Sandboxing is enforced at the WASM/JS layer in vendor/@cowasm/kernel
+      // by removing native filesystem, stdio, child_process, and POSIX process bindings.
+      // Python module blocking is NOT used because it can be bypassed.
 
-    // Execute the Python code directly
-    await py.exec(pythonCode);
+      // Execute the Python code directly
+      await py.exec(pythonCode);
 
-    // Add safe lookup helper function
-    await py.exec(`
+      // Add safe lookup helper function
+      await py.exec(`
 def __safe_lookup(key):
     try:
         return lookup(key)
@@ -83,30 +84,36 @@ def __safe_reverse_lookup(value):
         return []
 `);
 
-    // Validate LONGEST_KEY exists and is valid
-    const hasLongestKey = await py.repr("'LONGEST_KEY' in dir()");
-    if (hasLongestKey.trim() !== 'True') {
-      throw new Error('Invalid or missing LONGEST_KEY in python dictionary');
-    }
-    const longestRaw = await py.repr('int(LONGEST_KEY)');
-    const pythonLongest = Number.parseInt(String(longestRaw).replace(/[^0-9-]/g, ''), 10);
-    if (!Number.isFinite(pythonLongest) || pythonLongest <= 0) {
-      throw new Error('Invalid or missing LONGEST_KEY in python dictionary');
-    }
-    this._longestKey = pythonLongest;
+      // Validate LONGEST_KEY exists and is valid
+      const hasLongestKey = await py.repr("'LONGEST_KEY' in dir()");
+      if (hasLongestKey.trim() !== 'True') {
+        throw new Error('Invalid or missing LONGEST_KEY in python dictionary');
+      }
+      const longestRaw = await py.repr('int(LONGEST_KEY)');
+      const pythonLongest = Number.parseInt(String(longestRaw).replace(/[^0-9-]/g, ''), 10);
+      if (!Number.isFinite(pythonLongest) || pythonLongest <= 0) {
+        throw new Error('Invalid or missing LONGEST_KEY in python dictionary');
+      }
+      this._longestKey = pythonLongest;
 
-    // Validate lookup function exists
-    const hasLookup = await py.repr('callable(lookup) if "lookup" in dir() else False');
-    if (hasLookup.trim() !== 'True') {
-      throw new Error('Missing or invalid `lookup` function in python dictionary');
+      // Validate lookup function exists
+      const hasLookup = await py.repr('callable(lookup) if "lookup" in dir() else False');
+      if (hasLookup.trim() !== 'True') {
+        throw new Error('Missing or invalid `lookup` function in python dictionary');
+      }
+
+      // Check if reverse_lookup function exists
+      const hasReverse = await py.repr('callable(reverse_lookup) if "reverse_lookup" in dir() else False');
+      this._hasReverseLookup = hasReverse.trim() === 'True';
+
+      // Keep the Python runtime alive for lookups
+      this._py = py;
+    } catch (error) {
+      // Ownership transfers to the dictionary only at the `_py` assignment.
+      // Until then, initialization is responsible for destroying the runtime.
+      py.terminate();
+      throw error;
     }
-
-    // Check if reverse_lookup function exists
-    const hasReverse = await py.repr('callable(reverse_lookup) if "reverse_lookup" in dir() else False');
-    this._hasReverseLookup = hasReverse.trim() === 'True';
-
-    // Keep the Python runtime alive for lookups
-    this._py = py;
   }
 
   get identifier(): string {

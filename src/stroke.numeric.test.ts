@@ -65,4 +65,18 @@ describe('feral number key parsing', () => {
     expect(() => Stroke.fromSteno('1#8')).toThrow('Number key must be leading');
     expect(() => Stroke.fromSteno('18#')).toThrow('Number key must be leading');
   });
+
+  it.each([true, false])('rejects duplicate number keys when feral mode is %s', feral => {
+    setupStroke(config(feral));
+    for (const steno of [
+      '#1#8',
+      '1##8',
+      '##18',
+      '#1-#8',
+      '1-##8',
+      '##1-8',
+    ]) {
+      expect(() => Stroke.fromSteno(steno), steno).toThrow('Duplicate number key');
+    }
+  });
 });

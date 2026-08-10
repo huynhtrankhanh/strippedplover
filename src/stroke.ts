@@ -265,15 +265,22 @@ function strokeFromSteno(steno: string): number {
   );
   if (cfg.numberKey) {
     const numberKey = cfg.numberKey.replace('-', '');
-    const numberKeyIndex = remaining.indexOf(numberKey);
-    if (numberKeyIndex !== -1) {
-      if (numberKeyIndex !== 0 && !cfg.feralNumberKey) {
+    const firstNumberKeyIndex = remaining.indexOf(numberKey);
+    if (firstNumberKeyIndex !== -1) {
+      const secondNumberKeyIndex = remaining.indexOf(
+        numberKey,
+        firstNumberKeyIndex + numberKey.length,
+      );
+      if (secondNumberKeyIndex !== -1) {
+        throw new Error(`Duplicate number key: ${steno}`);
+      }
+      if (firstNumberKeyIndex !== 0 && !cfg.feralNumberKey) {
         throw new Error(`Number key must be leading: ${steno}`);
       }
       hasNumber = true;
-      remaining = cfg.feralNumberKey
-        ? remaining.split(numberKey).join('')
-        : remaining.slice(numberKey.length);
+      remaining =
+        remaining.slice(0, firstNumberKeyIndex) +
+        remaining.slice(firstNumberKeyIndex + numberKey.length);
     }
   }
   
