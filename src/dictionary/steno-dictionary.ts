@@ -122,7 +122,7 @@ export class StenoDictionary implements StenoDictionaryLike {
   insertIfAbsent(strokeTuple: string[], translation: string): boolean {
     const stroke = strokeTuple.join('/');
     const stmt = this.db.prepare(
-      'INSERT INTO entries (dictionary, stroke, translation) VALUES (?, ?, ?) ON CONFLICT(dictionary, stroke) DO NOTHING'
+      'INSERT OR IGNORE INTO entries (dictionary, stroke, translation) VALUES (?, ?, ?)'
     );
     const result = stmt.run(this._identifier, stroke, translation);
     const inserted = Number(result.changes ?? 0) > 0;
