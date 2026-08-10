@@ -259,7 +259,7 @@ Dictionary name matching is suffix-based for prioritization and enable/disable o
 When dictionary state changes because of translation-driven `{PLOVER:...}` commands (e.g., `PRIORITY_DICT`, `TOGGLE_DICT`, `SOLO_DICT`, `END_SOLO_DICT`), Stripped Plover emits an asynchronous event to STDOUT:
 
 ```json
-{"event":"dictionary_state","solo":false,"dictionaries":[{"identifier":"/configs/main.json","enabled":true,"entries":123}]}
+{"event":"dictionary_state","solo":false,"dictionaries":[{"identifier":"/configs/main.json","type":"json","enabled":true,"entries":123}]}
 ```
 
 These events are only sent for translation-triggered changes and may arrive in between request/response lines.
@@ -312,9 +312,9 @@ Move one or more dictionaries to the top of the stack (first path ends up highes
   "result": {
     "status": "ok",
     "dictionaries": [
-      {"identifier": "/configs/user.json", "enabled": true, "entries": 0},
-      {"identifier": "/configs/commands.json", "enabled": true, "entries": 0},
-      {"identifier": "/configs/main.json", "enabled": true, "entries": 0}
+      {"identifier": "/configs/user.json", "type": "json", "enabled": true, "entries": 0},
+      {"identifier": "/configs/commands.json", "type": "json", "enabled": true, "entries": 0},
+      {"identifier": "/configs/main.json", "type": "json", "enabled": true, "entries": 0}
     ]
   }
 }
@@ -373,8 +373,8 @@ Apply multiple enable/disable toggles at once using the same syntax as the Plove
   "result": {
     "status": "ok",
     "dictionaries": [
-      {"identifier": "commands.json", "enabled": false, "entries": 0},
-      {"identifier": "main.json", "enabled": false, "entries": 0}
+      {"identifier": "commands.json", "type": "json", "enabled": false, "entries": 0},
+      {"identifier": "main.json", "type": "json", "enabled": false, "entries": 0}
     ]
   }
 }
@@ -403,8 +403,8 @@ Temporarily enter a "solo" dictionary mode. All dictionaries are disabled first,
     "status": "ok",
     "solo": true,
     "dictionaries": [
-      {"identifier": "commands.json", "enabled": true, "entries": 0},
-      {"identifier": "main.json", "enabled": false, "entries": 0}
+      {"identifier": "commands.json", "type": "json", "enabled": true, "entries": 0},
+      {"identifier": "main.json", "type": "json", "enabled": false, "entries": 0}
     ]
   }
 }
@@ -431,8 +431,8 @@ Restore the enabled/disabled state that was active before the first `solo_dictio
     "status": "ok",
     "solo": false,
     "dictionaries": [
-      {"identifier": "commands.json", "enabled": true, "entries": 0},
-      {"identifier": "main.json", "enabled": true, "entries": 0}
+      {"identifier": "commands.json", "type": "json", "enabled": true, "entries": 0},
+      {"identifier": "main.json", "type": "json", "enabled": true, "entries": 0}
     ]
   }
 }
@@ -459,6 +459,7 @@ List all loaded dictionaries.
     "dictionaries": [
       {
         "identifier": "/path/to/dictionary.json",
+        "type": "json",
         "enabled": true,
         "entries": 12345
       }
@@ -489,6 +490,7 @@ Return the full dictionary stack along with whether solo mode is active.
     "dictionaries": [
       {
         "identifier": "/path/to/dictionary.json",
+        "type": "json",
         "enabled": true,
         "entries": 12345
       }

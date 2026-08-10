@@ -45,6 +45,22 @@ def reverse_lookup(value):
     expect(exportResponse.result?.type).toBe('python');
     expect(exportResponse.result?.pythonCode).toBe(pythonCode);
 
+    const listResponse = await engine.handleRequest({
+      id: 'list',
+      method: 'list_dictionaries',
+    });
+    expect(listResponse.result?.dictionaries).toEqual([
+      expect.objectContaining({ identifier: 'custom-python', type: 'python' }),
+    ]);
+
+    const stateResponse = await engine.handleRequest({
+      id: 'state',
+      method: 'get_dictionary_state',
+    });
+    expect(stateResponse.result?.dictionaries).toEqual([
+      expect.objectContaining({ identifier: 'custom-python', type: 'python' }),
+    ]);
+
     const translation = await engine.handleRequest({
       id: '3',
       method: 'translate',

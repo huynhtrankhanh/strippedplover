@@ -16,6 +16,7 @@ type PythonRuntime = PythonWasmAsync;
  * The code is executed in a sandboxed WASM Python runtime.
  */
 export class PythonDictionary implements StenoDictionaryLike {
+  readonly type = 'python' as const;
   private _identifier: string;
   private _pythonCode: string;
   private _py: PythonRuntime | null = null;

@@ -42,6 +42,17 @@ function getEnabled(engine: StrippedPlover): Record<string, boolean> {
 }
 
 describe('dictionary management RPC methods', () => {
+  it('exposes dictionary representation in list and state responses', async () => {
+    const engine = createEngine(['main.json']);
+
+    for (const method of ['list_dictionaries', 'get_dictionary_state']) {
+      const response = await engine.handleRequest({ id: method, method });
+      expect(response.result?.dictionaries).toEqual([
+        expect.objectContaining({ identifier: 'main.json', type: 'json' }),
+      ]);
+    }
+  });
+
   it('reorders dictionaries with prioritize_dictionaries', async () => {
     const engine = createEngine(['main.json', 'user.json', 'commands.json']);
 

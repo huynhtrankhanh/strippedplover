@@ -9,6 +9,7 @@ import { DatabaseSync } from '../sqlite-database.js';
 import { Stroke, normalizeSteno } from '../stroke.js';
 
 export interface StenoDictionaryLike {
+  type: 'json' | 'python';
   identifier: string;
   enabled: boolean;
   longestKey: number;
@@ -28,6 +29,7 @@ export interface StenoDictionaryOptions {
  * A steno dictionary backed by SQLite
  */
 export class StenoDictionary implements StenoDictionaryLike {
+  readonly type = 'json' as const;
   private db: DatabaseSync;
   private _identifier: string;
   private _enabled: boolean;

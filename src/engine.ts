@@ -473,9 +473,10 @@ export class StrippedPlover {
     return working;
   }
 
-  private describeDictionaries(): Array<{ identifier: string; enabled: boolean; entries: number }> {
+  private describeDictionaries(): Array<{ identifier: string; type: 'json' | 'python'; enabled: boolean; entries: number }> {
     return this.dictionaries.dicts.map(d => ({
       identifier: d.identifier,
+      type: d.type,
       enabled: d.enabled,
       entries: d.length,
     }));
