@@ -33,7 +33,7 @@ def reverse_lookup(value):
       },
     });
 
-    expect(importResponse.result?.entries).toBe(2);
+    expect(importResponse.result?.entries).toBe(-1);
     expect(importResponse.result?.type).toBe('python');
 
     const exportResponse = await engine.handleRequest({

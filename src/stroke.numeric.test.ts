@@ -1,5 +1,5 @@
-import { beforeAll, describe, expect, it } from 'vitest';
-import { Stroke, normalizeSteno } from './stroke.js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { setupStroke, Stroke, normalizeSteno, StrokeConfig } from './stroke.js';
 import * as system from './system/index.js';
 
 describe('numeric RTFCRE strokes', () => {
@@ -36,5 +36,33 @@ describe('numeric RTFCRE strokes', () => {
       const stroke = Stroke.fromKeys(keys);
       expect(Stroke.fromSteno(stroke.rtfcre).value, stroke.rtfcre).toBe(stroke.value);
     }
+  });
+});
+
+describe('feral number key parsing', () => {
+  const config = (feralNumberKey: boolean): StrokeConfig => ({
+    keys: ['#', 'S-', '-L'],
+    implicitHyphenKeys: new Set(),
+    numberKey: '#',
+    numbers: new Map([['S-', '1-'], ['-L', '-8']]),
+    feralNumberKey,
+    undoStrokeSteno: '',
+  });
+
+  afterAll(() => system.setup('English Stenotype'));
+
+  it('accepts the number key in every position when configured as feral', () => {
+    setupStroke(config(true));
+    const expected = Stroke.fromKeys(['#', 'S-', '-L']);
+    for (const steno of ['#18', '1#8', '18#']) {
+      expect(Stroke.fromSteno(steno).value).toBe(expected.value);
+    }
+  });
+
+  it('rejects non-leading number keys when feral behavior is disabled', () => {
+    setupStroke(config(false));
+    expect(Stroke.fromSteno('#18').stenoKeys).toEqual(['#', 'S-', '-L']);
+    expect(() => Stroke.fromSteno('1#8')).toThrow('Number key must be leading');
+    expect(() => Stroke.fromSteno('18#')).toThrow('Number key must be leading');
   });
 });

@@ -22,8 +22,6 @@ export class PythonDictionary implements StenoDictionaryLike {
   private _py: PythonRuntime | null = null;
   private _longestKey = 0;
   private _hasReverseLookup = false;
-  private _entries: Array<[string[], string]> = [];
-  private _length = -1;
   enabled: boolean;
 
   private constructor(name: string, pythonCode: string, enabled = true) {
@@ -107,32 +105,6 @@ def __safe_reverse_lookup(value):
     const hasReverse = await py.repr('callable(reverse_lookup) if "reverse_lookup" in dir() else False');
     this._hasReverseLookup = hasReverse.trim() === 'True';
 
-    const hasDict = await py.repr("'DICTIONARY' in dir()");
-    if (hasDict.trim() === 'True') {
-      try {
-        const raw = await py.repr(
-          "__import__('json').dumps([[list(k), v] for k, v in DICTIONARY.items() if isinstance(k, tuple) and isinstance(v, str)])"
-        );
-        const trimmed = String(raw).trim().replace(/^'|'$/g, '');
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) {
-          this._entries = parsed.filter(
-            (item): item is [string[], string] =>
-              Array.isArray(item) && Array.isArray(item[0]) && typeof item[1] === 'string'
-          );
-          this._length = this._entries.length;
-          if (this._entries.length > 0) {
-            const maxLen = Math.max(...this._entries.map(([s]) => s.length));
-            if (maxLen > this._longestKey) {
-              this._longestKey = maxLen;
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Error enumerating Python dictionary entries:', err);
-      }
-    }
-
     // Keep the Python runtime alive for lookups
     this._py = py;
   }
@@ -154,7 +126,7 @@ def __safe_reverse_lookup(value):
    * Return -1 to indicate unknown size.
    */
   get length(): number {
-    return this._length >= 0 ? this._length : -1;
+    return -1;
   }
 
   /**
@@ -198,27 +170,9 @@ def __safe_reverse_lookup(value):
   }
 
   /**
-   * For Python dictionaries with dynamic lookup, we cannot iterate entries.
-   */
-  *entries(): Generator<[string[], string]> {
-    if (this._entries.length === 0) return;
-    for (const entry of this._entries) {
-      yield [entry[0], entry[1]];
-    }
-  }
-
-  items(): Array<[string[], string]> {
-    return [...this._entries];
-  }
-
-  /**
    * Async reverse lookup that calls the Python reverse_lookup function if available.
    */
   async reverseLookup(translation: string): Promise<Set<string[]>> {
-    if (this._entries.length > 0 && !this._hasReverseLookup) {
-      return new Set(this._entries.filter(([, value]) => value === translation).map(([stroke]) => stroke));
-    }
-
     if (!this._py || !this._hasReverseLookup) {
       return new Set();
     }
