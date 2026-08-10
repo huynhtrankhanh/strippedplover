@@ -49,7 +49,7 @@ The `id` can be a string or number. If the JSON cannot be parsed, the server res
 | -32601 | Unknown method |
 | -32000 | General error |
 
-Parameter validation failures (missing fields, unknown dictionaries, read-only mutations, etc.) use the general error code.
+Parameter validation failures (missing fields, unknown dictionaries, unsupported entry mutations, etc.) use the general error code.
 
 ## Startup
 
@@ -254,12 +254,12 @@ Dictionary name matching is suffix-based for prioritization and enable/disable o
 
 **Dictionary Types:**
 - **JSON dictionaries**: Store explicit stroke-to-translation entries. Writable at runtime.
-- **Python dictionaries**: Store Python code that implements lookup functions. Read-only at runtime.
+- **Python dictionaries**: Store Python code that implements lookup functions and does not expose concrete entries.
 
 When dictionary state changes because of translation-driven `{PLOVER:...}` commands (e.g., `PRIORITY_DICT`, `TOGGLE_DICT`, `SOLO_DICT`, `END_SOLO_DICT`), Stripped Plover emits an asynchronous event to STDOUT:
 
 ```json
-{"event":"dictionary_state","solo":false,"dictionaries":[{"identifier":"/configs/main.json","enabled":true,"readonly":false,"entries":123}]}
+{"event":"dictionary_state","solo":false,"dictionaries":[{"identifier":"/configs/main.json","type":"json","enabled":true,"entries":123}]}
 ```
 
 These events are only sent for translation-triggered changes and may arrive in between request/response lines.
@@ -312,9 +312,9 @@ Move one or more dictionaries to the top of the stack (first path ends up highes
   "result": {
     "status": "ok",
     "dictionaries": [
-      {"identifier": "/configs/user.json", "enabled": true, "readonly": false, "entries": 0},
-      {"identifier": "/configs/commands.json", "enabled": true, "readonly": false, "entries": 0},
-      {"identifier": "/configs/main.json", "enabled": true, "readonly": false, "entries": 0}
+      {"identifier": "/configs/user.json", "type": "json", "enabled": true, "entries": 0},
+      {"identifier": "/configs/commands.json", "type": "json", "enabled": true, "entries": 0},
+      {"identifier": "/configs/main.json", "type": "json", "enabled": true, "entries": 0}
     ]
   }
 }
@@ -373,8 +373,8 @@ Apply multiple enable/disable toggles at once using the same syntax as the Plove
   "result": {
     "status": "ok",
     "dictionaries": [
-      {"identifier": "commands.json", "enabled": false, "readonly": false, "entries": 0},
-      {"identifier": "main.json", "enabled": false, "readonly": false, "entries": 0}
+      {"identifier": "commands.json", "type": "json", "enabled": false, "entries": 0},
+      {"identifier": "main.json", "type": "json", "enabled": false, "entries": 0}
     ]
   }
 }
@@ -403,8 +403,8 @@ Temporarily enter a "solo" dictionary mode. All dictionaries are disabled first,
     "status": "ok",
     "solo": true,
     "dictionaries": [
-      {"identifier": "commands.json", "enabled": true, "readonly": false, "entries": 0},
-      {"identifier": "main.json", "enabled": false, "readonly": false, "entries": 0}
+      {"identifier": "commands.json", "type": "json", "enabled": true, "entries": 0},
+      {"identifier": "main.json", "type": "json", "enabled": false, "entries": 0}
     ]
   }
 }
@@ -431,8 +431,8 @@ Restore the enabled/disabled state that was active before the first `solo_dictio
     "status": "ok",
     "solo": false,
     "dictionaries": [
-      {"identifier": "commands.json", "enabled": true, "readonly": false, "entries": 0},
-      {"identifier": "main.json", "enabled": true, "readonly": false, "entries": 0}
+      {"identifier": "commands.json", "type": "json", "enabled": true, "entries": 0},
+      {"identifier": "main.json", "type": "json", "enabled": true, "entries": 0}
     ]
   }
 }
@@ -459,8 +459,8 @@ List all loaded dictionaries.
     "dictionaries": [
       {
         "identifier": "/path/to/dictionary.json",
+        "type": "json",
         "enabled": true,
-        "readonly": false,
         "entries": 12345
       }
     ]
@@ -490,8 +490,8 @@ Return the full dictionary stack along with whether solo mode is active.
     "dictionaries": [
       {
         "identifier": "/path/to/dictionary.json",
+        "type": "json",
         "enabled": true,
-        "readonly": false,
         "entries": 12345
       }
     ]
@@ -688,7 +688,7 @@ Parameters:
 ```
 
 Importing automatically loads the dictionary into the active stack.
-- Python dictionaries are read-only at runtime.
+- Python dictionaries do not expose concrete entries.
 - Merge is not supported for Python dictionaries since they store code, not entries.
 
 #### `export_dictionary`
@@ -738,7 +738,7 @@ Export a dictionary as a protocol message.
 
 ### Entry CRUD Operations
 
-Entry operations are only available for JSON dictionaries. Python dictionaries are read-only.
+Entry operations are only available for JSON dictionaries. Python dictionaries do not expose concrete entries.
 
 #### `add_entry`
 
@@ -757,7 +757,7 @@ Add an entry to a dictionary.
 }
 ```
 
-The `name` parameter is optional. If not specified, the entry is added to the first writable dictionary.
+The `name` parameter is optional. If not specified, the entry is added to the first dictionary with concrete entries.
 
 **Response:**
 ```json

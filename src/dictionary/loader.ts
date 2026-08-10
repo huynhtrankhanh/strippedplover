@@ -41,7 +41,7 @@ export function createJsonDictionary(name: string, data: Record<string, string>,
  * Create a new empty dictionary
  */
 export function createDictionary(name: string, db: DatabaseSync): StenoDictionary {
-  return new StenoDictionary(db, { identifier: name, readonly: false });
+  return new StenoDictionary(db, { identifier: name });
 }
 
 /**

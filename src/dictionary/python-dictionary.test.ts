@@ -154,26 +154,6 @@ def reverse_lookup(value):
     dict.terminate();
   }, 30000);
 
-  it('throws appropriate errors for mutating operations', async () => {
-    const code = `
-LONGEST_KEY = 1
-
-def lookup(key):
-    if key == ('TEFT',):
-        return 'test'
-    raise KeyError(key)
-`;
-
-    const dict = await PythonDictionary.loadFromCode('readonly-dict', code);
-    
-    expect(() => dict.set(['NEW'], 'value')).toThrow('read-only');
-    expect(() => dict.delete(['TEFT'])).toThrow('read-only');
-    expect(() => dict.clear()).toThrow('read-only');
-    expect(() => dict.update([[['NEW'], 'value']])).toThrow('read-only');
-
-    dict.terminate();
-  }, 30000);
-
   it('validates LONGEST_KEY is required', async () => {
     const code = `
 def lookup(key):

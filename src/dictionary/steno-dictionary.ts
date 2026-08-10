@@ -9,26 +9,19 @@ import { DatabaseSync } from '../sqlite-database.js';
 import { Stroke, normalizeSteno } from '../stroke.js';
 
 export interface StenoDictionaryLike {
+  type: 'json' | 'python';
   identifier: string;
-  readonly: boolean;
   enabled: boolean;
   longestKey: number;
   length: number;
   get(strokeTuple: string[]): string | null | Promise<string | null>;
   has(strokeTuple: string[]): boolean | Promise<boolean>;
-  set(strokeTuple: string[], translation: string): void;
-  delete(strokeTuple: string[]): boolean;
-  clear(): void;
-  update(entries: Iterable<[string[], string]>): void;
-  items(): Array<[string[], string]>;
-  entries(): Generator<[string[], string]>;
   reverseLookup(translation: string): Set<string[]> | Promise<Set<string[]>>;
   caseReverseLookup(translation: string): Set<string>;
 }
 
 export interface StenoDictionaryOptions {
   identifier?: string;
-  readonly?: boolean;
   enabled?: boolean;
 }
 
@@ -36,9 +29,9 @@ export interface StenoDictionaryOptions {
  * A steno dictionary backed by SQLite
  */
 export class StenoDictionary implements StenoDictionaryLike {
+  readonly type = 'json' as const;
   private db: DatabaseSync;
   private _identifier: string;
-  private _readonly: boolean;
   private _enabled: boolean;
   private _timestamp: number;
   private _longestKey: number;
@@ -46,7 +39,6 @@ export class StenoDictionary implements StenoDictionaryLike {
   constructor(db: DatabaseSync, options: StenoDictionaryOptions = {}) {
     this.db = db;
     this._identifier = options.identifier ?? 'unknown';
-    this._readonly = options.readonly ?? false;
     this._enabled = options.enabled ?? true;
     this._timestamp = Date.now();
     this._longestKey = 0;
@@ -61,14 +53,6 @@ export class StenoDictionary implements StenoDictionaryLike {
 
   set identifier(value: string) {
     this._identifier = value;
-  }
-
-  get readonly(): boolean {
-    return this._readonly;
-  }
-
-  set readonly(value: boolean) {
-    this._readonly = value;
   }
 
   get enabled(): boolean {
@@ -114,10 +98,6 @@ export class StenoDictionary implements StenoDictionaryLike {
    * Set a translation for a stroke
    */
   set(strokeTuple: string[], translation: string): void {
-    if (this._readonly) {
-      throw new Error('Dictionary is read-only');
-    }
-
     const stroke = strokeTuple.join('/');
     
     // Delete existing entry if any (to update reverse lookup)
@@ -140,10 +120,6 @@ export class StenoDictionary implements StenoDictionaryLike {
    * Delete an entry by stroke
    */
   delete(strokeTuple: string[]): boolean {
-    if (this._readonly) {
-      throw new Error('Dictionary is read-only');
-    }
-
     const stroke = strokeTuple.join('/');
     const stmt = this.db.prepare('DELETE FROM entries WHERE stroke = ? AND dictionary = ?');
     const result = stmt.run(stroke, this._identifier);
@@ -195,9 +171,6 @@ export class StenoDictionary implements StenoDictionaryLike {
    * Clear all entries
    */
   clear(): void {
-    if (this._readonly) {
-      throw new Error('Dictionary is read-only');
-    }
     const stmt = this.db.prepare('DELETE FROM entries WHERE dictionary = ?');
     stmt.run(this._identifier);
     this._longestKey = 0;
@@ -207,10 +180,6 @@ export class StenoDictionary implements StenoDictionaryLike {
    * Update dictionary with entries from an iterable
    */
   update(entries: Iterable<[string[], string]>): void {
-    if (this._readonly) {
-      throw new Error('Dictionary is read-only');
-    }
-
     const insertStmt = this.db.prepare(
       'INSERT OR REPLACE INTO entries (dictionary, stroke, translation) VALUES (?, ?, ?)'
     );
@@ -402,15 +371,15 @@ export class StenoDictionaryCollection {
   }
 
   /**
-   * Get the first writable dictionary
+   * Get the first dictionary that exposes concrete entries
    */
-  firstWritable(): StenoDictionaryLike {
+  firstWithEntries(): StenoDictionary {
     for (const d of this._dicts) {
-      if (!d.readonly) {
+      if (d instanceof StenoDictionary) {
         return d;
       }
     }
-    throw new Error('No writable dictionary');
+    throw new Error('No dictionary with concrete entries');
   }
 
   /**

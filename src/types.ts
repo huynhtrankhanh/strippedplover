@@ -54,8 +54,8 @@ export interface DictionaryEntry {
 
 export interface DictionaryInfo {
   identifier: string;
+  type: 'json' | 'python';
   enabled: boolean;
-  readonly: boolean;
   entries: number;
 }
 

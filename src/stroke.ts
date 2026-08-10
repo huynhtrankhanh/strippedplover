@@ -257,7 +257,12 @@ function strokeFromSteno(steno: string): number {
   let remaining = steno;
   
   // Handle number key prefix
-  let hasNumber = false;
+  // Numeric aliases are themselves an RTFCRE representation of the number
+  // bar.  The serializer normally omits `#` when at least one alias is
+  // present, so detect them before parsing the individual keys.
+  let hasNumber = cfg.numberKey !== null && [...cfg.numbers.values()].some(
+    number => steno.includes(number.replace('-', ''))
+  );
   if (cfg.numberKey && remaining.startsWith('#')) {
     hasNumber = true;
     remaining = remaining.slice(1);
@@ -271,12 +276,24 @@ function strokeFromSteno(steno: string): number {
   let implicitHyphenPos = -1;
   if (!hasExplicitHyphen) {
     for (let i = 0; i < remaining.length; i++) {
-      const char = remaining[i];
       for (const implKey of cfg.implicitHyphenKeys) {
         const keyChar = implKey.replace('-', '');
         if (remaining.slice(i).startsWith(keyChar)) {
           implicitHyphenPos = i;
           break;
+        }
+      }
+      if (implicitHyphenPos !== -1) break;
+
+      // A numeric alias for a vowel or right-hand key establishes the same
+      // boundary as the underlying steno key.
+      if (hasNumber) {
+        for (const [key, number] of cfg.numbers) {
+          if ((cfg.implicitHyphenKeys.has(key) || key.startsWith('-')) &&
+              remaining.slice(i).startsWith(number.replace('-', ''))) {
+            implicitHyphenPos = i;
+            break;
+          }
         }
       }
       if (implicitHyphenPos !== -1) break;
