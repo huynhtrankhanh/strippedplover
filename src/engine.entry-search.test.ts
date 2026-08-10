@@ -132,6 +132,35 @@ describe('entry search and enumeration APIs', () => {
     ]);
   });
 
+  it('supports case-insensitive exact matching for stroke and output filters', async () => {
+    const { engine } = await createEngineWithEntries();
+
+    const outputResponse = await engine.handleRequest({
+      id: '5d',
+      method: 'search_entries',
+      params: {
+        output: 'SUN',
+        match: 'exact',
+      },
+    });
+    expect(outputResponse.result?.entries).toEqual([
+      { dictionary: '/dicts/main.json', stroke: 'ST', translation: 'sun' },
+    ]);
+    expect(outputResponse.result?.match).toBe('exact');
+
+    const strokeResponse = await engine.handleRequest({
+      id: '5e',
+      method: 'search_entries',
+      params: {
+        stroke: 'st',
+        match: 'exact',
+      },
+    });
+    expect(strokeResponse.result?.entries).toEqual([
+      { dictionary: '/dicts/main.json', stroke: 'ST', translation: 'sun' },
+    ]);
+  });
+
   it('supports dictionary filtering with suffix identifiers', async () => {
     const { engine } = await createEngineWithEntries();
 
