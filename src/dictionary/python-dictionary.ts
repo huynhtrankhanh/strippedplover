@@ -75,6 +75,13 @@ def __safe_lookup(key):
     except Exception:
         return None
 
+def __safe_lookup_base64(key):
+    value = __safe_lookup(key)
+    if not isinstance(value, str):
+        return None
+    import base64
+    return base64.b64encode(value.encode('utf-8')).decode('ascii')
+
 def __safe_reverse_lookup(value):
     try:
         if 'reverse_lookup' in globals():
@@ -151,16 +158,18 @@ def __safe_reverse_lookup(value):
       // Build Python tuple from stroke array - escape backslashes first, then single quotes
       const tupleStr = `(${strokeTuple.map(s => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`).join(', ')}${strokeTuple.length === 1 ? ',' : ''})`;
       
-      const result = await this._py.repr(`__safe_lookup(${tupleStr})`);
+      // `repr()` is the only value-returning API exposed by python-wasm, but a
+      // Python string repr escapes newlines, backslashes, and invisible Unicode
+      // characters such as ZWJ. Transfer UTF-8 as base64 so the repr contains
+      // ASCII only, then decode the original string on this side of the bridge.
+      const result = await this._py.repr(`__safe_lookup_base64(${tupleStr})`);
       
       const trimmed = result.trim();
-      if (trimmed && trimmed !== 'None') {
-        // Remove surrounding quotes if present
-        if ((trimmed.startsWith("'") && trimmed.endsWith("'")) ||
-            (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
-          return trimmed.slice(1, -1);
-        }
-        return trimmed;
+      if (trimmed !== 'None' &&
+          ((trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+           (trimmed.startsWith('"') && trimmed.endsWith('"')))) {
+        const encoded = trimmed.slice(1, -1);
+        return Buffer.from(encoded, 'base64').toString('utf8');
       }
       return null;
     } catch {

@@ -73,6 +73,31 @@ def lookup(key):
     dict.terminate();
   }, 30000);
 
+  it('preserves escaped and Unicode characters in lookup results', async () => {
+    const code = String.raw`
+LONGEST_KEY = 1
+
+DICTIONARY = {
+    ('SPECIAL',): "line 1\nline 2\\path 'quoted' \"double quoted\" 👨🏾‍❤️‍👨🏿",
+    ('EMPTY',): '',
+}
+
+def lookup(key):
+    if key in DICTIONARY:
+        return DICTIONARY[key]
+    raise KeyError(key)
+`;
+
+    const dict = await PythonDictionary.loadFromCode('unicode-dict', code);
+
+    expect(await dict.get(['SPECIAL'])).toBe(
+      "line 1\nline 2\\path 'quoted' \"double quoted\" 👨🏾‍❤️‍👨🏿",
+    );
+    expect(await dict.get(['EMPTY'])).toBe('');
+
+    dict.terminate();
+  }, 30000);
+
   it('maintains isolated state between dictionary instances', async () => {
     const code1 = `
 LONGEST_KEY = 1
